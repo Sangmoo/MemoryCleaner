@@ -1,0 +1,23 @@
+services:
+  mem-tool:
+    build: .
+    container_name: mem-tool
+    restart: unless-stopped
+    ports:
+      - "80101:80101"
+    # Linux 호스트에서 호스트 프로세스를 보고/관리하려면 아래 두 줄을 활성화하세요.
+    # (Windows/Mac Docker Desktop에서는 호스트 PID 공유가 의도대로 동작하지 않습니다.)
+    # pid: "host"
+    # privileged: true
+    environment:
+      - PORT=80101
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:80101/api/memory').read()"
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s

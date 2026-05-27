@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install *)",
+      "Bash(python -c \"import customtkinter; import psutil; print\\('OK'\\)\")",
+      "Bash(python -m py_compile main.py core/memory.py core/processes.py core/analyzer.py ui/app.py ui/process_table.py ui/memory_bar.py)",
+      "Bash(python -c ' *)",
+      "Bash(start pythonw *)",
+      "Bash(timeout 3)",
+      "Bash(tasklist)",
+      "Bash(findstr python *)",
+      "Bash(start python -c ' *)",
+      "Bash(python -m py_compile ui/process_table.py ui/app.py)",
+      "PowerShell(Stop-Process -Force)",
+      "PowerShell(Get-Command cargo -ErrorAction SilentlyContinue; Get-Command rustc -ErrorAction SilentlyContinue; Get-Command rustup -ErrorAction SilentlyContinue; Write-Host \"---\"; if \\(Test-Path \"$env:USERPROFILE\\\\.cargo\\\\bin\\\\cargo.exe\"\\) { Write-Host \".cargo/bin exists\" } else { Write-Host \"Rust NOT installed\" })",
+      "PowerShell(Get-ChildItem \"$env:USERPROFILE\\\\.cargo\\\\bin\" -ErrorAction SilentlyContinue | Select-Object Name; Write-Host \"---\"; & \"$env:USERPROFILE\\\\.cargo\\\\bin\\\\cargo.exe\" --version 2>&1; Write-Host \"---PATH check---\"; $env:Path -split \";\" | Select-String \"cargo\")",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(git init *)",
+      "Bash(git remote *)",
+      "Bash(git add *)"
+    ]
+  }
+}

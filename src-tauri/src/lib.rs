@@ -1,0 +1,190 @@
+mod commands;
+mod history;
+mod settings;
+mod startup;
+
+use commands::AppState;
+use settings::load_settings;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+use sysinfo::{ProcessesToUpdate, System};
+use tauri::{AppHandle, Emitter, Manager};
+
+// ── 자동 정리 백그라운드 루프 ───────────────────────────────────────────────
+
+async fn auto_clean_loop(app: AppHandle) {
+    let mut ticker = tokio::time::interval(Duration::from_secs(5));
+    // 버그 수정: 초기값을 now()로 설정 → 앱 시작 직후 즉시 실행 방지
+    let mut last_clean = Instant::now();
+
+    loop {
+        ticker.tick().await;
+
+        let state: tauri::State<AppState> = app.state::<AppState>();
+
+        let (enabled, threshold_pct, interval_secs, protected, excl_start, excl_end) = {
+            let Ok(s) = state.settings.lock() else { continue };
+            (
+                s.auto_clean.enabled,
+                s.auto_clean.threshold_percent,
+                s.auto_clean.interval_seconds,
+                s.protected_processes.clone(),
+                s.auto_clean.exclude_start_hour,
+                s.auto_clean.exclude_end_hour,
+            )
+        };
+
+        if !enabled { continue; }
+        if last_clean.elapsed() < Duration::from_secs(interval_secs) { continue; }
+
+        // 제외 시간대 확인 (버그 수정 #7)
+        if let (Some(start), Some(end)) = (excl_start, excl_end) {
+            use chrono::Timelike;
+            let hour = chrono::Local::now().hour() as u8;
+            let excluded = if start <= end {
+                hour >= start && hour < end
+            } else {
+                // 자정 넘김 (예: 22~06)
+                hour >= start || hour < end
+            };
+            if excluded { continue; }
+        }
+
+        // 메모리 확인
+        let percent = {
+            let Ok(mut sys) = state.system.lock() else { continue };
+            sys.refresh_memory();
+            let t = sys.total_memory();
+            let u = sys.used_memory();
+            if t > 0 { (u as f64 / t as f64) * 100.0 } else { 0.0 }
+        };
+        if percent < threshold_pct { continue; }
+
+        // PID 수집 (락 해제 후 do_kill)
+        let pids: Vec<u32> = {
+            let Ok(mut sys) = state.system.lock() else { continue };
+            sys.refresh_processes(ProcessesToUpdate::All, true);
+            sys.processes()
+                .iter()
+                .filter_map(|(pid, p)| {
+                    let name = p.name().to_string_lossy().to_string();
+                    let pid_u32 = pid.as_u32();
+                    if pid_u32 == 0 || pid_u32 == 4 || commands::is_sys_name(&name) { return None; }
+                    if protected.contains(&name.to_lowercase()) { return None; }
+                    Some(pid_u32)
+                })
+                .collect()
+        };
+        if pids.is_empty() { continue; }
+
+        last_clean = Instant::now();
+        if let Ok(report) = commands::do_kill(&*state, pids, "auto") {
+            let killed = report.results.iter().filter(|r| r.success).count();
+            if killed > 0 {
+                let _ = app.emit("auto-clean-done", killed);
+                // OS 알림 (트레이 상주 중에도 표시)
+                use tauri_plugin_notification::NotificationExt;
+                let body = format!(
+                    "{}개 프로세스 종료, {:.1}% → {:.1}%",
+                    killed, report.before_percent, report.after_percent
+                );
+                let _ = app.notification().builder()
+                    .title("Memory Cleaner — 자동 정리 완료")
+                    .body(&body)
+                    .show();
+            }
+        }
+    }
+}
+
+// ── 트레이 구성 ──────────────────────────────────────────────────────────
+
+fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+    let show = MenuItem::with_id(app, "show", "앱 열기", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "종료",   true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &quit])?;
+
+    TrayIconBuilder::new()
+        .icon(app.default_window_icon().unwrap().clone())
+        .menu(&menu)
+        .tooltip("Memory Cleaner")
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => { if let Some(w) = app.get_webview_window("main") { let _ = w.show(); let _ = w.set_focus(); } }
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                let app = tray.app_handle();
+                if let Some(w) = app.get_webview_window("main") {
+                    if w.is_visible().unwrap_or(false) { let _ = w.hide(); }
+                    else { let _ = w.show(); let _ = w.set_focus(); }
+                }
+            }
+        })
+        .build(app)?;
+
+    Ok(())
+}
+
+// ── 앱 진입점 ─────────────────────────────────────────────────────────────
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        .setup(|app| {
+            let data_dir = app
+                .path()
+                .app_local_data_dir()
+                .unwrap_or_else(|_| std::env::temp_dir().join("mem-tool"));
+
+            let settings = load_settings(&data_dir);
+            let mut sys = System::new_all();
+            sys.refresh_all();
+
+            app.manage(AppState {
+                system: Mutex::new(sys),
+                settings: Mutex::new(settings),
+                data_dir,
+            });
+
+            let window = app.get_webview_window("main").unwrap();
+            let win_close = window.clone();
+            window.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = win_close.hide();
+                }
+            });
+
+            setup_tray(app)?;
+
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(auto_clean_loop(handle));
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::get_memory,
+            commands::get_processes,
+            commands::get_process_details,
+            commands::kill_processes,
+            commands::empty_working_set,
+            commands::cleanup_temp_files,
+            commands::get_settings,
+            commands::save_settings_cmd,
+            commands::get_app_autostart,
+            commands::set_app_autostart,
+            commands::get_history,
+            commands::clear_history,
+            commands::get_startup_programs_cmd,
+            commands::toggle_startup,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}

@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    @apply h-full m-0 p-0;
+  }
+  body {
+    @apply font-sans antialiased text-slate-900 dark:text-slate-100;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-track { @apply bg-transparent; }
+  *::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 dark:bg-slate-600 rounded-full;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-400 dark:bg-slate-500;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white dark:bg-surface-dark-alt rounded-xl shadow-sm
+           border border-slate-200/60 dark:border-slate-700/50;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5
+           rounded-lg text-sm font-medium transition-all
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500
+           disabled:opacity-40 disabled:cursor-not-allowed
+           active:scale-[0.97];
+  }
+  .btn-primary {
+    @apply bg-brand-600 hover:bg-brand-700 text-white shadow-sm;
+  }
+  .btn-secondary {
+    @apply bg-slate-100 hover:bg-slate-200 text-slate-700
+           dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-100;
+  }
+  .btn-danger {
+    @apply bg-rose-600 hover:bg-rose-700 text-white shadow-sm;
+  }
+  .btn-ghost {
+    @apply bg-transparent hover:bg-slate-100 dark:hover:bg-slate-700
+           text-slate-600 dark:text-slate-300
+           border border-slate-300 dark:border-slate-600;
+  }
+  .chip {
+    @apply inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium;
+  }
+  .chip-sys {
+    @apply bg-sys-bg dark:bg-sys-bg-dark text-sys dark:text-sys-fg-dark;
+  }
+  .chip-rec {
+    @apply bg-rec-bg dark:bg-rec-bg-dark text-rec dark:text-rec-fg-dark;
+  }
+  .chip-nor {
+    @apply bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300;
+  }
+}
+
+/* virtualized row hover (no JS overhead) */
+.row-hover:hover {
+  background-color: rgb(241 245 249 / 0.7);
+}
+.dark .row-hover:hover {
+  background-color: rgb(51 65 85 / 0.5);
+}
