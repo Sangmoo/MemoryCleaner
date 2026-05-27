@@ -148,6 +148,24 @@ export default function App() {
 
   useEffect(() => { refreshProcesses(threshold); }, [threshold, refreshProcesses]);
 
+  // ── 3분 자동 새로고침 ──────────────────────────────────────────────────
+  const PROCESS_REFRESH_MS = 3 * 60 * 1000; // 180초
+  const [nextRefreshIn, setNextRefreshIn] = useState(PROCESS_REFRESH_MS / 1000);
+
+  useEffect(() => {
+    // 메인 인터벌: 3분마다 목록 갱신
+    const id = setInterval(() => {
+      refreshProcesses(threshold);
+      setNextRefreshIn(PROCESS_REFRESH_MS / 1000);
+    }, PROCESS_REFRESH_MS);
+
+    // 카운트다운: 1초마다 감소
+    const countdown = setInterval(() => {
+      setNextRefreshIn(prev => (prev <= 1 ? PROCESS_REFRESH_MS / 1000 : prev - 1));
+    }, 1000);
+
+    return () => { clearInterval(id); clearInterval(countdown); };
+  }, [threshold, refreshProcesses]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 선택 헬퍼 ────────────────────────────────────────────────────────
   const toggle = useCallback((pid: number) => {
@@ -305,7 +323,7 @@ export default function App() {
               <div className="flex flex-wrap items-center gap-2.5">
                 <ThresholdStepper value={threshold} onChange={setThreshold} />
                 <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
-                <button onClick={() => refreshProcesses(threshold)} className="btn btn-secondary" disabled={loading}>
+                <button onClick={() => { refreshProcesses(threshold); setNextRefreshIn(PROCESS_REFRESH_MS / 1000); }} className="btn btn-secondary" disabled={loading}>
                   <RefreshCw className={clsx("w-3.5 h-3.5", loading && "animate-spin")} /> 새로고침
                 </button>
                 <button onClick={selectAll} className="btn btn-secondary">
@@ -326,9 +344,13 @@ export default function App() {
                   <Trash2 className={clsx("w-3.5 h-3.5", cleaningTemp && "animate-pulse")} />
                   {cleaningTemp ? "정리 중…" : "임시 파일"}
                 </button>
-                <div className="ml-auto text-xs text-slate-500 dark:text-slate-400 font-mono">
+                <div className="ml-auto text-xs text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1.5">
                   {stats.total}개 · 추천 {stats.recommended}개 · 보호 {stats.protected}개
-                  {loadMs !== null && <span className="ml-2 opacity-70">· {loadMs.toFixed(0)}ms</span>}
+                  {loadMs !== null && <span className="opacity-70">· {loadMs.toFixed(0)}ms</span>}
+                  <span className="opacity-50">·</span>
+                  <span title="다음 자동 새로고침까지 남은 시간" className="opacity-60">
+                    🔄 {Math.floor(nextRefreshIn / 60)}:{String(nextRefreshIn % 60).padStart(2, "0")}
+                  </span>
                 </div>
               </div>
 
