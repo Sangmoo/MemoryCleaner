@@ -149,7 +149,7 @@ export default function App() {
   useEffect(() => { refreshProcesses(threshold); }, [threshold, refreshProcesses]);
 
   // ── 3분 자동 새로고침 ──────────────────────────────────────────────────
-  const PROCESS_REFRESH_MS = 3 * 60 * 1000; // 180초
+  const PROCESS_REFRESH_MS = 10 * 1000; // 10초
   const [nextRefreshIn, setNextRefreshIn] = useState(PROCESS_REFRESH_MS / 1000);
 
   useEffect(() => {
