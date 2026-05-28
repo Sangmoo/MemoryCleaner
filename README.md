@@ -1,8 +1,8 @@
-# Memory Cleaner v1.0.0
+# Memory Cleaner v1.1.0
 
 **Windows 전용 스마트 메모리 정리 도구** — Tauri 2 + React 18 + Rust
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/Sangmoo/MemoryCleaner/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue)](https://github.com/Sangmoo/MemoryCleaner/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-brightgreen)](https://github.com/Sangmoo/MemoryCleaner)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Build](https://github.com/Sangmoo/MemoryCleaner/actions/workflows/release.yml/badge.svg)](https://github.com/Sangmoo/MemoryCleaner/actions/workflows/release.yml)
@@ -19,6 +19,18 @@
 | `Memory Cleaner_x.x.x_x64_en-US.msi` | Windows Installer |
 
 > Windows 10 / 11 x64 전용입니다.
+
+---
+
+## 🌐 다국어 지원
+
+| 언어 | 코드 |
+|------|------|
+| 한국어 | `ko` |
+| English | `en` |
+| 日本語 | `ja` |
+
+설정 → 언어 항목에서 변경할 수 있습니다.
 
 ---
 
@@ -41,41 +53,49 @@
 |------|------|
 | CPU 실시간 게이지 | 헤더에 CPU % 미니 게이지 표시 |
 | 디스크 공간 | C: 드라이브 여유 공간 실시간 표시 |
+| **24시간 RAM 히스토리** | 분 단위로 수집한 24h RAM 사용 추이 그래프 |
 | 인사이트 탭 | 통계 요약, TOP 5 프로세스, 7일 킬 히스토리 |
 | 시스템 정보 | CPU 모델/코어수, RAM 용량, OS 버전, 가동 시간 |
 | CPU 급등 감지 | CPU 70%+ 비시스템 프로세스 발견 시 앱 내 알림 |
+
+### ⏰ 자동화 & 스케줄
+| 기능 | 설명 |
+|------|------|
+| **스케줄 자동 정리** | HH:MM + 요일(일~토) 지정으로 예약 자동 정리 |
+| **실행 중 정리 건너뜀** | 특정 앱 실행 중에는 자동/스케줄 정리 비활성화 |
+| 자동 정리 제외 시간대 | 특정 시간 범위 내 자동 정리 비활성화 |
+| Windows 자동 시작 | 로그인 후 트레이에서 자동 실행 |
 
 ### 🔔 알림 & UX
 | 기능 | 설명 |
 |------|------|
 | 인앱 토스트 알림 | 모든 작업 결과를 success/error/warning/info 토스트로 표시 |
-| 알림 센터 | 헤더 벨 아이콘 드롭다운 — 자동 정리·메모리 경고·CPU 급등 이력 |
-| OS 트레이 알림 | RAM 임계값 도달 시 Windows 알림 센터로 푸시 (히스테리시스 5%) |
+| **알림 센터 필터** | 전체 / 자동정리 / 메모리 / CPU 탭으로 알림 분류 |
+| OS 트레이 알림 | RAM 임계값 도달 시 Windows 알림 센터로 푸시 |
 | About 창 | 버전·기술 스택·GitHub 소스코드·릴리스 링크 |
-| 업데이트 배너 | GitHub Releases API로 신규 버전 자동 감지, 세션당 1회 |
+| 업데이트 배너 | GitHub Releases API로 신규 버전 자동 감지 |
 | 온보딩 투어 | 최초 실행 시 4단계 기능 소개 |
 
 ### ⚙️ 설정 & 프로세스 제어
 | 기능 | 설명 |
 |------|------|
 | 설정 프리셋 | 🎮 게임 · 💼 업무 · 🔋 절전 모드 원클릭 전환 |
-| 자동 정리 제외 시간대 | 특정 시간 범위 내 자동 정리 비활성화 |
+| **언어 선택** | 한국어 / English / 日本語 전환 |
 | 우선순위 조절 | 우클릭 → CPU 낮춤 / 유휴 / 정상화 (SetPriorityClass) |
 | 보호 프로세스 | 자동·수동 정리에서 제외할 프로세스 등록 |
-| 보호 목록 즉시 추가 | 프로세스 행 우클릭 → 보호 목록에 바로 추가 |
 | 설정 내보내기/가져오기 | JSON 파일로 백업 및 복원 |
-| CPU 급등 감지 ON/OFF | 설정에서 토글 가능 |
 
 ### 📁 유틸리티
 | 기능 | 설명 |
 |------|------|
+| 프로세스 상세 패널 | 클릭 → PID·경로·메모리(WorkingSet/Virtual)·CPU·상태 표시 |
 | Kill 히스토리 | 종료 기록 저장 + CSV 내보내기 |
 | 디스크 정리 | TEMP·브라우저 캐시·Windows Update 캐시·휴지통 일괄 정리 |
 | 시작 프로그램 관리 | 레지스트리 Run 키 기반 시작 프로그램 ON/OFF |
+| **트레이 퀵 메뉴** | 트레이 우클릭 → Quick Clean / 전체 RAM 플러시 |
 | 동적 트레이 아이콘 | RAM 사용률에 따라 🟢🟡🔴 색상 자동 변경 |
 | 단일 인스턴스 | 앱 중복 실행 시 기존 창 포커스 |
 | 다크/라이트 모드 | 전환 가능 |
-| Windows 자동 시작 | 로그인 후 트레이에서 자동 실행 |
 
 ---
 
@@ -113,7 +133,22 @@
 | 💼 업무 모드 | 80% | 1분 | 85% |
 | 🔋 절전 모드 | 70% | 30초 | 75% |
 
-설정 창에서 카드를 클릭하면 즉시 적용됩니다.
+---
+
+## ⏱️ 스케줄 자동 정리
+
+특정 시간에 자동으로 메모리를 정리합니다.
+
+- 설정 → **스케줄 자동 정리** 섹션에서 스케줄 추가
+- 시간(`HH:MM`) + 요일(일~토) 선택
+- 복수 스케줄 등록 가능
+- "실행 중 정리 건너뜀" 규칙과 연동 — 게임/영상 재생 중 건너뛰기 가능
+
+**예시:**
+```
+매일 09:00  →  [월 화 수 목 금]
+매일 23:30  →  [월 화 수 목 금 토 일]
+```
 
 ---
 
@@ -124,6 +159,7 @@
 | 요약 통계 | 총 종료 수, 확보 메모리, 오늘 종료 수, 자동 정리 수 |
 | TOP 5 프로세스 | 가장 자주 종료된 프로세스 (막대 차트) |
 | 7일 추이 | 날짜별 종료 건수 막대 차트 |
+| **24h RAM 히스토리** | 분 단위 RAM 사용률 SVG 라인 차트 |
 | 시스템 정보 | CPU 모델, 코어 수, RAM 용량, OS 버전, 가동 시간 |
 
 ---
@@ -151,6 +187,7 @@ PID별 최근 **12개 측정값** (10초 간격 ≈ 2분)을 추적합니다.
 | Frontend | React 18 + TypeScript + Tailwind CSS + Vite 5 |
 | Backend | Rust — sysinfo 0.32, windows-rs 0.58, chrono, tokio |
 | UI | lucide-react, react-window (가상 스크롤) |
+| i18n | React Context 기반 내장 i18n (ko/en/ja) |
 | Tauri Plugins | notification, dialog, single-instance, opener |
 
 ---
@@ -161,7 +198,6 @@ PID별 최근 **12개 측정값** (10초 간격 ≈ 2분)을 추적합니다.
 
 - [Node.js](https://nodejs.org/) LTS
 - [Rust](https://rustup.rs/) stable
-- [Tauri CLI](https://tauri.app/start/prerequisites/) (`npm install` 시 자동 설치)
 - Windows 10/11 + [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (Windows 11은 기본 내장)
 
 ### 실행
@@ -189,8 +225,8 @@ npm run tauri:build
 
 ```bash
 # 버전 태그 생성 & push → 빌드 자동 시작 (약 15~20분 소요)
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
 빌드 진행 상황: [GitHub Actions](https://github.com/Sangmoo/MemoryCleaner/actions)
@@ -199,15 +235,23 @@ git push origin v1.0.0
 
 ## 📦 릴리스 히스토리
 
+### v1.1.0 (2026-05-28)
+- ✅ **트레이 퀵 메뉴 강화** — Quick Clean / 전체 RAM 플러시 트레이 메뉴 항목 추가
+- ✅ **스케줄 자동 정리** — HH:MM + 요일 지정 예약 정리 (복수 스케줄 지원)
+- ✅ **24시간 RAM 히스토리 그래프** — 분 단위 수집, SVG 라인 차트
+- ✅ **프로세스 상세 패널 강화** — Virtual Memory 표시 추가
+- ✅ **자동 정리 커스텀 규칙** — 특정 앱 실행 중 자동/스케줄 정리 건너뜀
+- ✅ **다국어 지원 (ko/en/ja)** — React Context i18n, 전체 UI 한국어/영어/일본어 전환
+- ✅ **알림 센터 필터** — 전체 / 자동정리 / 메모리 / CPU 탭 필터링
+
 ### v1.0.0 (2026-05-28)
 - ✅ **인앱 토스트 알림** — alert() 전면 제거, 4종 토스트 시스템 (success/error/warning/info)
 - ✅ **알림 센터** — 벨 아이콘 드롭다운, 자동 정리·메모리 경고·CPU 급등 이력 관리
-- ✅ **About 창** — 버전·기술 스택·외부 링크 (opener 플러그인으로 OS 브라우저 연동)
+- ✅ **About 창** — 버전·기술 스택·외부 링크
 - ✅ **전체 RAM 플러시** — 모든 비시스템 프로세스 WorkingSet 일괄 해제
-- ✅ **단일 인스턴스** — 중복 실행 시 기존 창 포커스 (tauri-plugin-single-instance)
-- ✅ **커스텀 앱 아이콘** — 메모리 칩 + 번개 디자인, 전 플랫폼 사이즈 자동 생성
+- ✅ **단일 인스턴스** — 중복 실행 시 기존 창 포커스
+- ✅ **커스텀 앱 아이콘** — 메모리 칩 + 번개 디자인
 - ✅ **GitHub Actions CI/CD** — 태그 push만으로 Windows 빌드 + 릴리스 자동화
-- ✅ **외부 링크 수정** — Tauri WebView2 환경에서 버튼 클릭 시 OS 기본 브라우저 오픈
 
 ### v0.3.0 (2025)
 - ✅ CPU/Disk 실시간 모니터링 (헤더 미니 게이지)
@@ -219,7 +263,7 @@ git push origin v1.0.0
 - ✅ Kill 히스토리 CSV 내보내기
 - ✅ 업데이트 알림 배너 (GitHub Releases API 자동 감지)
 - ✅ 최초 실행 온보딩 투어 (4단계)
-- ✅ 시스템 정보 패널 (CPU / RAM / OS / 가동 시간)
+- ✅ 시스템 정보 패널
 
 ### v0.2.0
 - ✅ 메모리 누수 감지 (PID별 롤링 윈도우 알고리즘)
@@ -230,7 +274,6 @@ git push origin v1.0.0
 - ✅ 프로세스 그룹화 (×N 배지)
 - ✅ 동적 트레이 아이콘 (RAM 사용률 색상)
 - ✅ 메모리 경고 알림 (히스테리시스 5%)
-- ✅ 새로고침 간격 설정
 
 ### v0.1.0
 - ✅ 프로세스 목록 (가상 스크롤)
