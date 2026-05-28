@@ -53,6 +53,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   protected_processes: [],
   theme: "dark",
   autostart: false,
+  process_refresh_seconds: 10,
 };
 
 export default function App() {
@@ -148,30 +149,33 @@ export default function App() {
 
   useEffect(() => { refreshProcesses(threshold); }, [threshold, refreshProcesses]);
 
-  // ── 3분 자동 새로고침 ──────────────────────────────────────────────────
-  const PROCESS_REFRESH_MS = 10 * 1000; // 10초
-  const [nextRefreshIn, setNextRefreshIn] = useState(PROCESS_REFRESH_MS / 1000);
+  // ── 자동 새로고침 (설정 값 사용) ─────────────────────────────────────────
+  const PROCESS_REFRESH_MS = (settings.process_refresh_seconds ?? 10) * 1000;
+  const refreshIntervalSecs = Math.floor(PROCESS_REFRESH_MS / 1000);
+  const [nextRefreshIn, setNextRefreshIn] = useState(refreshIntervalSecs);
 
   useEffect(() => {
-    // 메인 인터벌: 3분마다 목록 갱신
+    setNextRefreshIn(refreshIntervalSecs); // 간격 변경 시 카운트다운 리셋
+
     const id = setInterval(() => {
       refreshProcesses(threshold);
-      setNextRefreshIn(PROCESS_REFRESH_MS / 1000);
+      setNextRefreshIn(refreshIntervalSecs);
     }, PROCESS_REFRESH_MS);
 
-    // 카운트다운: 1초마다 감소
     const countdown = setInterval(() => {
-      setNextRefreshIn(prev => (prev <= 1 ? PROCESS_REFRESH_MS / 1000 : prev - 1));
+      setNextRefreshIn(prev => (prev <= 1 ? refreshIntervalSecs : prev - 1));
     }, 1000);
 
     return () => { clearInterval(id); clearInterval(countdown); };
-  }, [threshold, refreshProcesses]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [threshold, refreshProcesses, PROCESS_REFRESH_MS]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 선택 헬퍼 ────────────────────────────────────────────────────────
-  const toggle = useCallback((pid: number) => {
+  const toggle = useCallback((pids: number[]) => {
     setSelected(prev => {
       const n = new Set(prev);
-      n.has(pid) ? n.delete(pid) : n.add(pid);
+      const allSelected = pids.every(pid => prev.has(pid));
+      if (allSelected) { pids.forEach(pid => n.delete(pid)); }
+      else              { pids.forEach(pid => n.add(pid)); }
       return n;
     });
   }, []);
@@ -323,7 +327,7 @@ export default function App() {
               <div className="flex flex-wrap items-center gap-2.5">
                 <ThresholdStepper value={threshold} onChange={setThreshold} />
                 <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
-                <button onClick={() => { refreshProcesses(threshold); setNextRefreshIn(PROCESS_REFRESH_MS / 1000); }} className="btn btn-secondary" disabled={loading}>
+                <button onClick={() => { refreshProcesses(threshold); setNextRefreshIn(refreshIntervalSecs); }} className="btn btn-secondary" disabled={loading}>
                   <RefreshCw className={clsx("w-3.5 h-3.5", loading && "animate-spin")} /> 새로고침
                 </button>
                 <button onClick={selectAll} className="btn btn-secondary">
@@ -349,7 +353,7 @@ export default function App() {
                   {loadMs !== null && <span className="opacity-70">· {loadMs.toFixed(0)}ms</span>}
                   <span className="opacity-50">·</span>
                   <span title="다음 자동 새로고침까지 남은 시간" className="opacity-60">
-                    🔄 {Math.floor(nextRefreshIn / 60)}:{String(nextRefreshIn % 60).padStart(2, "0")}
+                    🔄 {nextRefreshIn < 60 ? `${nextRefreshIn}s` : `${Math.floor(nextRefreshIn / 60)}:${String(nextRefreshIn % 60).padStart(2, "0")}`}
                   </span>
                 </div>
               </div>

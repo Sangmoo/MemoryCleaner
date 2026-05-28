@@ -14,7 +14,6 @@ use tauri::{AppHandle, Emitter, Manager};
 
 async fn auto_clean_loop(app: AppHandle) {
     let mut ticker = tokio::time::interval(Duration::from_secs(5));
-    // 버그 수정: 초기값을 now()로 설정 → 앱 시작 직후 즉시 실행 방지
     let mut last_clean = Instant::now();
 
     loop {
@@ -22,6 +21,21 @@ async fn auto_clean_loop(app: AppHandle) {
 
         let state: tauri::State<AppState> = app.state::<AppState>();
 
+        // ── 항상: 메모리 읽고 트레이 툴팁 실시간 갱신 ──────────────────────
+        let percent = {
+            let Ok(mut sys) = state.system.lock() else { continue };
+            sys.refresh_memory();
+            let t = sys.total_memory();
+            let u = sys.used_memory();
+            if t > 0 { (u as f64 / t as f64) * 100.0 } else { 0.0 }
+        };
+
+        if let Some(tray) = app.tray_by_id("main") {
+            let tooltip = format!("Memory Cleaner  ·  RAM {:.0}%", percent);
+            let _ = tray.set_tooltip(Some(&tooltip));
+        }
+
+        // ── 자동 정리: 설정 확인 ────────────────────────────────────────────
         let (enabled, threshold_pct, interval_secs, protected, excl_start, excl_end) = {
             let Ok(s) = state.settings.lock() else { continue };
             (
@@ -37,30 +51,22 @@ async fn auto_clean_loop(app: AppHandle) {
         if !enabled { continue; }
         if last_clean.elapsed() < Duration::from_secs(interval_secs) { continue; }
 
-        // 제외 시간대 확인 (버그 수정 #7)
+        // 제외 시간대 확인
         if let (Some(start), Some(end)) = (excl_start, excl_end) {
             use chrono::Timelike;
             let hour = chrono::Local::now().hour() as u8;
             let excluded = if start <= end {
                 hour >= start && hour < end
             } else {
-                // 자정 넘김 (예: 22~06)
                 hour >= start || hour < end
             };
             if excluded { continue; }
         }
 
-        // 메모리 확인
-        let percent = {
-            let Ok(mut sys) = state.system.lock() else { continue };
-            sys.refresh_memory();
-            let t = sys.total_memory();
-            let u = sys.used_memory();
-            if t > 0 { (u as f64 / t as f64) * 100.0 } else { 0.0 }
-        };
+        // 임계값 체크 (percent 이미 위에서 읽음)
         if percent < threshold_pct { continue; }
 
-        // PID 수집 (락 해제 후 do_kill)
+        // PID 수집
         let pids: Vec<u32> = {
             let Ok(mut sys) = state.system.lock() else { continue };
             sys.refresh_processes(ProcessesToUpdate::All, true);
@@ -82,7 +88,6 @@ async fn auto_clean_loop(app: AppHandle) {
             let killed = report.results.iter().filter(|r| r.success).count();
             if killed > 0 {
                 let _ = app.emit("auto-clean-done", killed);
-                // OS 알림 (트레이 상주 중에도 표시)
                 use tauri_plugin_notification::NotificationExt;
                 let body = format!(
                     "{}개 프로세스 종료, {:.1}% → {:.1}%",
@@ -107,7 +112,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "quit", "종료",   true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
 
-    TrayIconBuilder::new()
+    TrayIconBuilder::with_id("main")
         .icon(app.default_window_icon().unwrap().clone())
         .menu(&menu)
         .tooltip("Memory Cleaner")

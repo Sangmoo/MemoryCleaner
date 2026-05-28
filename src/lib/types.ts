@@ -59,6 +59,7 @@ export interface AppSettings {
   protected_processes: string[];
   theme: string;
   autostart: boolean;
+  process_refresh_seconds: number;
 }
 
 export interface HistoryEntry {

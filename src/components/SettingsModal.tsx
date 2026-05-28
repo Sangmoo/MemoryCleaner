@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { X, Plus, Save, Monitor, Clock } from "lucide-react";
+import { X, Plus, Save, Monitor, Clock, RefreshCw } from "lucide-react";
 import clsx from "clsx";
 import { api, isTauri } from "../lib/api";
 import type { AppSettings } from "../lib/types";
@@ -45,6 +45,7 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
           exclude_end_hour: useExclude ? settings.auto_clean.exclude_end_hour : null,
         },
         autostart,
+        process_refresh_seconds: settings.process_refresh_seconds ?? 10,
       };
       await onSave(toSave);
       onClose();
@@ -109,6 +110,29 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
               <span className="w-1.5 h-4 rounded-full bg-slate-400 inline-block" />
               앱 설정
             </h3>
+
+            {/* 새로고침 간격 */}
+            <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60">
+              <div className="flex items-center gap-2.5">
+                <RefreshCw className="w-4 h-4 text-slate-400" />
+                <div>
+                  <div className="text-sm font-medium">프로세스 목록 새로고침 간격</div>
+                  <div className="text-xs text-slate-400 mt-0.5">자동으로 목록을 갱신하는 주기</div>
+                </div>
+              </div>
+              <select
+                value={settings.process_refresh_seconds ?? 10}
+                onChange={e => setSettings(prev => ({ ...prev, process_refresh_seconds: Number(e.target.value) }))}
+                className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm"
+              >
+                <option value={5}>5초</option>
+                <option value={10}>10초</option>
+                <option value={30}>30초</option>
+                <option value={60}>1분</option>
+                <option value={180}>3분</option>
+                <option value={300}>5분</option>
+              </select>
+            </div>
 
             {/* 자동 시작 */}
             <label className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 cursor-pointer">

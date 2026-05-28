@@ -35,7 +35,12 @@ pub struct AppSettings {
     /// Windows 로그인 시 자동 시작 여부 (설정 캐시용, 실제 값은 레지스트리)
     #[serde(default)]
     pub autostart: bool,
+    /// 프로세스 목록 자동 새로고침 간격 (초)
+    #[serde(default = "default_process_refresh_secs")]
+    pub process_refresh_seconds: u64,
 }
+
+fn default_process_refresh_secs() -> u64 { 10 }
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -44,6 +49,7 @@ impl Default for AppSettings {
             protected_processes: Vec::new(),
             theme: "dark".to_string(),
             autostart: false,
+            process_refresh_seconds: 10,
         }
     }
 }
