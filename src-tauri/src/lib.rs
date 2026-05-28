@@ -250,6 +250,14 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // 이미 실행 중일 때 중복 실행 → 창을 앞으로 가져옴
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.set_focus();
+                let _ = w.unminimize();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
@@ -304,6 +312,8 @@ pub fn run() {
             commands::get_system_stats,
             commands::set_process_priority,
             commands::export_history_csv,
+            // v1.0 신규
+            commands::flush_all_working_sets,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

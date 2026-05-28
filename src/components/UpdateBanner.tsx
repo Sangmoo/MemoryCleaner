@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { X, Download, ExternalLink } from "lucide-react";
 
-const CURRENT_VERSION = "0.3.0";
+const CURRENT_VERSION = "1.0.0";
 const REPO = "Sangmoo/MemoryCleaner";
 const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 const RELEASES_PAGE = `https://github.com/${REPO}/releases/latest`;

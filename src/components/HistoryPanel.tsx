@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Trash2, RefreshCw, Download } from "lucide-react";
 import clsx from "clsx";
 import { api } from "../lib/api";
+import { toast } from "../lib/toast";
 import type { HistoryEntry } from "../lib/types";
 
 export function HistoryPanel() {
@@ -35,7 +36,7 @@ export function HistoryPanel() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      alert("CSV 내보내기 실패: " + String(e));
+      toast.error(String(e), "CSV 내보내기 실패");
     }
   };
 

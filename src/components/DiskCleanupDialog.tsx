@@ -2,6 +2,7 @@ import { useState } from "react";
 import { X, HardDrive, Loader2, Trash2, Chrome, AlertCircle } from "lucide-react";
 import clsx from "clsx";
 import { api } from "../lib/api";
+import { toast } from "../lib/toast";
 import type { CleanupOptions, TempCleanupReport } from "../lib/types";
 
 interface Props {
@@ -42,7 +43,7 @@ export function DiskCleanupDialog({ onClose }: Props) {
       const r = await api.cleanupDisk(opts);
       setReport(r);
     } catch (e) {
-      alert("디스크 정리 오류: " + String(e));
+      toast.error(String(e), "디스크 정리 오류");
     } finally {
       setRunning(false);
     }

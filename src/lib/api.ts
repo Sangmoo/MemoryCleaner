@@ -97,6 +97,9 @@ export const api = {
   exportHistoryCsv(): Promise<string> {
     return invoke("export_history_csv");
   },
+  flushAllWorkingSets(): Promise<EmptySetReport> {
+    return invoke("flush_all_working_sets");
+  },
 };
 
 export { isTauri };

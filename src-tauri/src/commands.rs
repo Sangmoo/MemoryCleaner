@@ -626,6 +626,32 @@ pub fn set_process_priority(pid: u32, level: String) -> Result<(), String> {
     { let _ = (pid, level); Err("Windows 전용 기능입니다.".into()) }
 }
 
+// ── 전체 프로세스 WorkingSet 플러시 ──────────────────────────────────────
+
+#[tauri::command]
+pub fn flush_all_working_sets(state: tauri::State<AppState>) -> Result<EmptySetReport, String> {
+    let protected = {
+        let s = state.settings.lock().map_err(|e| e.to_string())?;
+        s.protected_processes.clone()
+    };
+
+    let pids: Vec<u32> = {
+        let sys = state.system.lock().map_err(|e| e.to_string())?;
+        sys.processes()
+            .iter()
+            .filter_map(|(pid, p)| {
+                let name = p.name().to_string_lossy().to_string();
+                let pid_u32 = pid.as_u32();
+                if pid_u32 == 0 || pid_u32 == 4 || is_sys_name(&name) { return None; }
+                if protected.contains(&name.to_lowercase()) { return None; }
+                Some(pid_u32)
+            })
+            .collect()
+    };
+
+    empty_working_set(pids)
+}
+
 // ── 히스토리 CSV 내보내기 ─────────────────────────────────────────────────
 
 #[tauri::command]

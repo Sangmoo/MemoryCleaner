@@ -8,6 +8,7 @@ import {
 import clsx from "clsx";
 import type { ProcessInfo } from "../lib/types";
 import { api } from "../lib/api";
+import { toast } from "../lib/toast";
 
 // ── 메모리 누수 감지 ────────────────────────────────────────────────────────
 // PID별 최근 메모리 측정값 추적 → 지속적 증가 시 누수 의심
@@ -71,10 +72,12 @@ function ContextMenu({
       try { await api.setProcessPriority(pid, level); ok++; }
       catch { fail++; }
     }
-    alert(level === "normal"
-      ? `우선순위 정상화: ${ok}개 완료${fail > 0 ? `, ${fail}개 실패` : ""}`
-      : `우선순위 낮춤 (${level === "idle" ? "유휴" : "낮음"}): ${ok}개 완료${fail > 0 ? `, ${fail}개 실패` : ""}`
-    );
+    const label = level === "normal" ? "정상화" : level === "idle" ? "유휴" : "낮춤";
+    if (fail === 0) {
+      toast.success(`우선순위 ${label} 완료 (${ok}개)`, "프로세스 우선순위");
+    } else {
+      toast.warning(`우선순위 ${label}: ${ok}개 성공, ${fail}개 실패`, "프로세스 우선순위");
+    }
   };
 
   const menuItems: Array<{ icon: React.ReactNode; label: string; onClick: () => void; danger?: boolean }> = [

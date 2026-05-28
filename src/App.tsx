@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Zap, Moon, Sun, RefreshCw, CheckSquare, Sparkles, Square,
   Skull, Loader2, Settings, History, PlayCircle, Wind,
   AlertTriangle, HardDrive, Keyboard, BarChart2, Cpu, Flame,
+  Info,
 } from "lucide-react";
 import clsx from "clsx";
 import { listen } from "@tauri-apps/api/event";
 
 import { api, isTauri } from "./lib/api";
+import { toast } from "./lib/toast";
 import type {
   AppSettings, HotProcessEvent, MemorySnapshot, ProcessInfo, RecoveryReport, SystemStats,
 } from "./lib/types";
@@ -25,6 +27,10 @@ import { DiskCleanupDialog } from "./components/DiskCleanupDialog";
 import { InsightsPanel } from "./components/InsightsPanel";
 import { OnboardingTour } from "./components/OnboardingTour";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { AboutDialog } from "./components/AboutDialog";
+import { ToastContainer } from "./components/ToastContainer";
+import { NotificationCenter, type Notif, type NotifType } from "./components/NotificationCenter";
+import type { ToastItem } from "./lib/toast";
 
 const MEM_REFRESH_MS = 3_000;
 const STATS_REFRESH_MS = 4_000;
@@ -70,6 +76,32 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 export default function App() {
+  // ── 토스트 시스템 ──────────────────────────────────────────────────────
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const toastCounter = useRef(0);
+
+  const addToast = useCallback((type: ToastItem["type"], message: string, title?: string) => {
+    const id = String(++toastCounter.current);
+    setToasts(prev => [...prev, { id, type, message, title }]);
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  // toast 전역 함수에 등록
+  useEffect(() => { toast.register(addToast); }, [addToast]);
+
+  // ── 알림 센터 ──────────────────────────────────────────────────────────
+  const [notifs, setNotifs] = useState<Notif[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifCounter = useRef(0);
+
+  const addNotif = useCallback((type: NotifType, title: string, message: string) => {
+    const id = String(++notifCounter.current);
+    setNotifs(prev => [...prev.slice(-49), { id, type, title, message, time: new Date(), read: false }]);
+  }, []);
+
   // ── 설정 ──────────────────────────────────────────────────────────────
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [dark, setDark] = useDarkMode(settings.theme);
@@ -128,6 +160,18 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
+  // ── 트레이 최초 숨김 안내 ────────────────────────────────────────────
+  const [trayHintShown, setTrayHintShown] = useState(false);
+  const showTrayHint = () => {
+    const key = "mc-tray-hint-shown";
+    if (!localStorage.getItem(key) && !trayHintShown) {
+      setTrayHint(true);
+      setTrayHintShown(true);
+      localStorage.setItem(key, "1");
+      setTimeout(() => setTrayHint(false), 5000);
+    }
+  };
+
   // ── 온보딩 ───────────────────────────────────────────────────────────
   const [showOnboarding, setShowOnboarding] = useState(false);
   useEffect(() => {
@@ -157,20 +201,23 @@ export default function App() {
     let unl2: (() => void) | null = null;
     let unl3: (() => void) | null = null;
 
-    listen("auto-clean-done", () => {
+    listen<number>("auto-clean-done", (e) => {
       setAutoCleanToast(true);
       setTimeout(() => setAutoCleanToast(false), 3000);
       refreshProcesses(threshold);
+      addNotif("auto_clean", "자동 정리 완료", `${e.payload}개 프로세스 종료`);
     }).then(fn => { unl1 = fn; }).catch(console.error);
 
     listen<number>("memory-warning", (e) => {
       setMemWarnToast(e.payload);
       setTimeout(() => setMemWarnToast(null), 6000);
+      addNotif("mem_warn", "메모리 경고", `RAM 사용률 ${e.payload.toFixed(1)}%`);
     }).then(fn => { unl2 = fn; }).catch(console.error);
 
     listen<HotProcessEvent>("hot-process", (e) => {
       setHotProcessToast(e.payload);
       setTimeout(() => setHotProcessToast(null), 6000);
+      addNotif("cpu_spike", "CPU 급등 감지", `${e.payload.name} — ${e.payload.cpu.toFixed(1)}%`);
     }).then(fn => { unl3 = fn; }).catch(console.error);
 
     return () => { unl1?.(); unl2?.(); unl3?.(); };
@@ -189,7 +236,10 @@ export default function App() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [showDiskCleanup, setShowDiskCleanup] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
   const [report, setReport] = useState<RecoveryReport | null>(null);
+  // 최초 트레이 숨김 안내
+  const [trayHint, setTrayHint] = useState(false);
 
   // ── 프로세스 상세 ──────────────────────────────────────────────────────
   const [detailPid, setDetailPid] = useState<{ pid: number; name: string } | null>(null);
@@ -250,7 +300,7 @@ export default function App() {
   const handleProtect = useCallback(async (name: string) => {
     const lname = name.toLowerCase();
     if (settings.protected_processes.includes(lname)) {
-      alert(`이미 보호 목록에 있습니다: ${name}`);
+      toast.info(`${name}`, "이미 보호 목록에 있습니다");
       return;
     }
     const newSettings: AppSettings = {
@@ -261,9 +311,9 @@ export default function App() {
       await api.saveSettings(newSettings);
       setSettings(newSettings);
       await refreshProcesses(threshold);
-      alert(`보호 목록에 추가됐습니다: ${name}`);
+      toast.success(`${name}`, "보호 목록에 추가됨");
     } catch (e) {
-      alert("보호 목록 추가 실패: " + String(e));
+      toast.error(String(e), "보호 목록 추가 실패");
     }
   }, [settings, threshold, refreshProcesses]);
 
@@ -290,7 +340,7 @@ export default function App() {
       setSelected(new Set());
       await refreshProcesses(threshold);
     } catch (e) {
-      alert("종료 중 오류: " + String(e));
+      toast.error(String(e), "프로세스 종료 오류");
     } finally {
       setKilling(false);
     }
@@ -302,12 +352,28 @@ export default function App() {
     try {
       const pids = Array.from(selected);
       const result = await api.emptyWorkingSet(pids);
-      alert(`메모리 압축 완료: ${result.processed}개 성공, ${result.failed}개 실패`);
+      toast.success(`${result.processed}개 성공, ${result.failed}개 실패`, "메모리 압축 완료");
       await refreshProcesses(threshold);
     } catch (e) {
-      alert("메모리 압축 오류: " + String(e));
+      toast.error(String(e), "메모리 압축 오류");
     } finally {
       setEmptyingSet(false);
+    }
+  };
+
+  // ── 전체 RAM 플러시 ──────────────────────────────────────────────────
+  const [flushing, setFlushing] = useState(false);
+  const doFlushAll = async () => {
+    setFlushing(true);
+    try {
+      const r = await api.flushAllWorkingSets();
+      toast.success(`${r.processed}개 프로세스 압축 완료`, "전체 RAM 플러시");
+      addNotif("info", "전체 RAM 플러시", `${r.processed}개 압축 완료`);
+      await refreshProcesses(threshold);
+    } catch (e) {
+      toast.error(String(e), "RAM 플러시 오류");
+    } finally {
+      setFlushing(false);
     }
   };
 
@@ -315,7 +381,7 @@ export default function App() {
   const doQuickClean = async () => {
     const pids = processes.filter(p => p.safe_kill).map(p => p.pid);
     if (pids.length === 0) {
-      alert("추천 프로세스가 없습니다.\n임계값을 낮추거나 잠시 후 다시 시도해 보세요.");
+      toast.info("임계값을 낮추거나 잠시 후 다시 시도하세요.", "추천 프로세스 없음");
       return;
     }
     setQuickCleaning(true);
@@ -325,7 +391,7 @@ export default function App() {
       setSelected(new Set());
       await refreshProcesses(threshold);
     } catch (e) {
-      alert("Quick Clean 오류: " + String(e));
+      toast.error(String(e), "Quick Clean 오류");
     } finally {
       setQuickCleaning(false);
     }
@@ -461,11 +527,21 @@ export default function App() {
           <button onClick={() => setShowDiskCleanup(true)} className="btn btn-ghost !px-2.5" title="디스크 정리">
             <HardDrive className="w-4 h-4" /><span className="text-xs">디스크</span>
           </button>
+          <NotificationCenter
+            notifs={notifs}
+            open={notifOpen}
+            onToggle={() => setNotifOpen(v => !v)}
+            onRead={() => setNotifs(prev => prev.map(n => ({ ...n, read: true })))}
+            onClear={() => setNotifs([])}
+          />
           <button onClick={() => setShowShortcuts(true)} className="btn btn-ghost !px-2" title="단축키 도움말 (?)">
             <Keyboard className="w-4 h-4" />
           </button>
           <button onClick={() => setShowSettings(true)} className="btn btn-ghost !px-2.5">
             <Settings className="w-4 h-4" /><span className="text-xs">설정</span>
+          </button>
+          <button onClick={() => setShowAbout(true)} className="btn btn-ghost !px-2" title="앱 정보">
+            <Info className="w-4 h-4" />
           </button>
           <button onClick={() => setDark(!dark)} className="btn btn-ghost !px-2.5">
             {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -606,6 +682,15 @@ export default function App() {
           </div>
           <div className="flex gap-2">
             <button
+              onClick={doFlushAll}
+              disabled={flushing || killing}
+              title="전체 비시스템 프로세스의 WorkingSet 압축 — 프로세스를 종료하지 않고 RAM 확보"
+              className="btn btn-secondary px-4 py-2 text-sm"
+            >
+              {flushing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+              전체 RAM 플러시
+            </button>
+            <button
               onClick={doEmptyWorkingSet}
               disabled={stats.selectedCount === 0 || emptyingSet || killing}
               className="btn btn-secondary px-4 py-2 text-sm"
@@ -657,6 +742,20 @@ export default function App() {
       {showOnboarding && (
         <OnboardingTour onComplete={completeOnboarding} />
       )}
+      {showAbout && (
+        <AboutDialog onClose={() => setShowAbout(false)} />
+      )}
+
+      {/* 트레이 최초 숨김 안내 */}
+      {trayHint && (
+        <div className="fixed bottom-4 left-4 z-50 px-4 py-3 bg-slate-800 text-white text-sm rounded-xl shadow-lg animate-fade-in flex items-center gap-2.5 max-w-xs">
+          <Zap className="w-4 h-4 text-brand-400 flex-shrink-0" />
+          <span>창을 닫아도 트레이에서 계속 실행됩니다.</span>
+        </div>
+      )}
+
+      {/* 토스트 컨테이너 (모든 alert 대체) */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

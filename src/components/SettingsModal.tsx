@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { X, Plus, Save, Monitor, Clock, RefreshCw, Bell, Download, Upload, Cpu } from "lucide-react";
 import clsx from "clsx";
 import { api, isTauri } from "../lib/api";
+import { toast } from "../lib/toast";
 import type { AppSettings, SettingsProfile } from "../lib/types";
 
 interface Props {
@@ -52,7 +53,7 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
       await onSave(toSave);
       onClose();
     } catch (e) {
-      alert("저장 실패: " + String(e));
+      toast.error(String(e), "저장 실패");
     } finally {
       setSaving(false);
     }
@@ -64,7 +65,7 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
       await api.setAppAutostart(!autostart);
       setAutostart(!autostart);
     } catch (e) {
-      alert("자동 시작 설정 실패: " + String(e));
+      toast.error(String(e), "자동 시작 설정 실패");
     } finally {
       setAutostartLoading(false);
     }
@@ -123,9 +124,9 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
           auto_clean: { ...settings.auto_clean, ...imported.auto_clean },
         });
         if (typeof imported.autostart === "boolean") setAutostart(imported.autostart);
-        alert("설정을 가져왔습니다. 저장 버튼을 눌러 적용하세요.");
+        toast.success("저장 버튼을 눌러 적용하세요.", "설정 가져오기 완료");
       } catch (e) {
-        alert("가져오기 실패: " + String(e));
+        toast.error(String(e), "가져오기 실패");
       }
     };
     input.click();
