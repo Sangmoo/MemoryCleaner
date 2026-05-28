@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { X, Download, ExternalLink } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 const CURRENT_VERSION = "1.0.0";
 const REPO = "Sangmoo/MemoryCleaner";
@@ -54,15 +55,13 @@ export function UpdateBanner() {
         <span>
           새 버전 <strong>{release.tag_name}</strong> 이 출시됐습니다!
         </span>
-        <a
-          href={release.html_url}
-          target="_blank"
-          rel="noreferrer"
+        <button
+          onClick={() => openUrl(release.html_url)}
           className="flex items-center gap-1 underline underline-offset-2 hover:opacity-80 ml-1"
         >
           다운로드
           <ExternalLink className="w-3 h-3" />
-        </a>
+        </button>
       </div>
       <button onClick={dismiss} className="p-0.5 hover:opacity-70 flex-shrink-0">
         <X className="w-3.5 h-3.5" />

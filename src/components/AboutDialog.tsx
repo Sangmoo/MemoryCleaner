@@ -1,4 +1,5 @@
 import { X, Zap, Github, ExternalLink, Heart } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 interface Props {
   onClose: () => void;
@@ -57,28 +58,24 @@ export function AboutDialog({ onClose }: Props) {
 
           {/* 링크 */}
           <div className="flex flex-col gap-2">
-            <a
-              href={GITHUB_URL}
-              target="_blank"
-              rel="noreferrer"
+            <button
+              onClick={() => openUrl(GITHUB_URL)}
               className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60
-                hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm text-slate-700 dark:text-slate-200"
+                hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm text-slate-700 dark:text-slate-200 text-left w-full"
             >
               <Github className="w-4 h-4 flex-shrink-0" />
               <span className="flex-1 font-medium">GitHub 소스코드</span>
               <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-            </a>
-            <a
-              href={RELEASES_URL}
-              target="_blank"
-              rel="noreferrer"
+            </button>
+            <button
+              onClick={() => openUrl(RELEASES_URL)}
               className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60
-                hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm text-slate-700 dark:text-slate-200"
+                hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm text-slate-700 dark:text-slate-200 text-left w-full"
             >
               <Zap className="w-4 h-4 flex-shrink-0 text-brand-500" />
               <span className="flex-1 font-medium">릴리스 다운로드</span>
               <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-            </a>
+            </button>
           </div>
 
           {/* 라이선스 */}
