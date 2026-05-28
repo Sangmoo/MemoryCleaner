@@ -2,13 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Zap, Moon, Sun, RefreshCw, CheckSquare, Sparkles, Square,
   Skull, Loader2, Settings, History, PlayCircle, Wind,
-  AlertTriangle, HardDrive, Keyboard,
+  AlertTriangle, HardDrive, Keyboard, BarChart2, Cpu, Flame,
 } from "lucide-react";
 import clsx from "clsx";
 import { listen } from "@tauri-apps/api/event";
 
 import { api, isTauri } from "./lib/api";
-import type { AppSettings, MemorySnapshot, ProcessInfo, RecoveryReport } from "./lib/types";
+import type {
+  AppSettings, HotProcessEvent, MemorySnapshot, ProcessInfo, RecoveryReport, SystemStats,
+} from "./lib/types";
 import { MemoryGauge } from "./components/MemoryGauge";
 import { MemoryGraph } from "./components/MemoryGraph";
 import { ProcessTable } from "./components/ProcessTable";
@@ -20,11 +22,15 @@ import { HistoryPanel } from "./components/HistoryPanel";
 import { StartupPanel } from "./components/StartupPanel";
 import { ProcessDetailModal } from "./components/ProcessDetailModal";
 import { DiskCleanupDialog } from "./components/DiskCleanupDialog";
+import { InsightsPanel } from "./components/InsightsPanel";
+import { OnboardingTour } from "./components/OnboardingTour";
+import { UpdateBanner } from "./components/UpdateBanner";
 
 const MEM_REFRESH_MS = 3_000;
+const STATS_REFRESH_MS = 4_000;
 const GRAPH_MAX_POINTS = 60; // 3분치
 
-type Tab = "process" | "history" | "startup";
+type Tab = "process" | "history" | "startup" | "insights";
 
 // ── 다크모드 훅 ────────────────────────────────────────────────────────────
 function useDarkMode(initial: string) {
@@ -58,6 +64,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   process_refresh_seconds: 10,
   warn_notifications_enabled: true,
   warn_threshold_percent: 90,
+  profiles: [],
+  onboarding_done: false,
+  hot_process_detection: true,
 };
 
 export default function App() {
@@ -107,13 +116,46 @@ export default function App() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
+  // ── 시스템 통계 (CPU + 디스크) ──────────────────────────────────────
+  const [sysStats, setSysStats] = useState<SystemStats | null>(null);
+  useEffect(() => {
+    if (!isTauri) return;
+    const tick = async () => {
+      try { setSysStats(await api.getSystemStats()); } catch { /* 무시 */ }
+    };
+    tick();
+    const id = setInterval(tick, STATS_REFRESH_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  // ── 온보딩 ───────────────────────────────────────────────────────────
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  useEffect(() => {
+    if (!isTauri) return;
+    api.getSettings().then(s => {
+      if (!s.onboarding_done) setShowOnboarding(true);
+    }).catch(console.error);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const completeOnboarding = async () => {
+    setShowOnboarding(false);
+    try {
+      const s = await api.getSettings();
+      await api.saveSettings({ ...s, onboarding_done: true });
+      setSettings(prev => ({ ...prev, onboarding_done: true }));
+    } catch (e) { console.error(e); }
+  };
+
   // ── 자동정리 완료 이벤트 수신 ─────────────────────────────────────────
   const [autoCleanToast, setAutoCleanToast] = useState(false);
   const [memWarnToast, setMemWarnToast] = useState<number | null>(null);
+  const [hotProcessToast, setHotProcessToast] = useState<HotProcessEvent | null>(null);
+
   useEffect(() => {
     if (!isTauri) return;
     let unl1: (() => void) | null = null;
     let unl2: (() => void) | null = null;
+    let unl3: (() => void) | null = null;
 
     listen("auto-clean-done", () => {
       setAutoCleanToast(true);
@@ -126,7 +168,12 @@ export default function App() {
       setTimeout(() => setMemWarnToast(null), 6000);
     }).then(fn => { unl2 = fn; }).catch(console.error);
 
-    return () => { unl1?.(); unl2?.(); };
+    listen<HotProcessEvent>("hot-process", (e) => {
+      setHotProcessToast(e.payload);
+      setTimeout(() => setHotProcessToast(null), 6000);
+    }).then(fn => { unl3 = fn; }).catch(console.error);
+
+    return () => { unl1?.(); unl2?.(); unl3?.(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 프로세스 ──────────────────────────────────────────────────────────
@@ -198,6 +245,27 @@ export default function App() {
   const selectAll       = () => setSelected(new Set(processes.filter(p => !p.is_system && !p.is_protected).map(p => p.pid)));
   const selectRecommended = () => setSelected(new Set(processes.filter(p => p.safe_kill).map(p => p.pid)));
   const deselectAll     = () => setSelected(new Set());
+
+  // ── 보호 목록 즉시 추가 (우클릭 컨텍스트 메뉴) ──────────────────────
+  const handleProtect = useCallback(async (name: string) => {
+    const lname = name.toLowerCase();
+    if (settings.protected_processes.includes(lname)) {
+      alert(`이미 보호 목록에 있습니다: ${name}`);
+      return;
+    }
+    const newSettings: AppSettings = {
+      ...settings,
+      protected_processes: [...settings.protected_processes, lname],
+    };
+    try {
+      await api.saveSettings(newSettings);
+      setSettings(newSettings);
+      await refreshProcesses(threshold);
+      alert(`보호 목록에 추가됐습니다: ${name}`);
+    } catch (e) {
+      alert("보호 목록 추가 실패: " + String(e));
+    }
+  }, [settings, threshold, refreshProcesses]);
 
   // ── 통계 ──────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -317,6 +385,22 @@ export default function App() {
         </div>
       )}
 
+      {/* 핫 프로세스 토스트 */}
+      {hotProcessToast !== null && (
+        <div className="fixed top-4 left-4 z-50 px-4 py-3 bg-orange-500 text-white text-sm rounded-xl shadow-lg animate-fade-in flex items-center gap-2.5 max-w-xs">
+          <Flame className="w-5 h-5 flex-shrink-0" />
+          <div>
+            <div className="font-bold">CPU 급등 감지</div>
+            <div className="text-xs opacity-90">
+              {hotProcessToast.name} — CPU {hotProcessToast.cpu.toFixed(1)}%
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 업데이트 배너 */}
+      <UpdateBanner />
+
       {/* 헤더 */}
       <header className="flex items-center justify-between px-5 py-3 border-b border-slate-200/70 dark:border-slate-700/50 bg-white/80 dark:bg-surface-dark-alt/80 backdrop-blur-sm">
         <div className="flex items-center gap-2.5">
@@ -331,6 +415,36 @@ export default function App() {
             <span className="ml-1 text-xs px-2 py-0.5 rounded-full bg-brand-100 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 font-medium">
               자동정리 ON
             </span>
+          )}
+
+          {/* CPU / 디스크 미니 게이지 */}
+          {sysStats && (
+            <div className="hidden sm:flex items-center gap-3 ml-3 pl-3 border-l border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400" title={`CPU ${sysStats.cpu_percent.toFixed(1)}%`}>
+                <Cpu className="w-3.5 h-3.5" />
+                <div className="w-12 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                  <div
+                    className={clsx("h-full rounded-full transition-all duration-500",
+                      sysStats.cpu_percent < 60 ? "bg-emerald-500" :
+                      sysStats.cpu_percent < 80 ? "bg-amber-400" : "bg-red-500")}
+                    style={{ width: `${Math.min(100, sysStats.cpu_percent)}%` }}
+                  />
+                </div>
+                <span className="font-mono tabular-nums">{sysStats.cpu_percent.toFixed(0)}%</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400" title={`디스크 C: ${sysStats.disk_used_pct.toFixed(1)}% 사용`}>
+                <HardDrive className="w-3.5 h-3.5" />
+                <div className="w-12 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                  <div
+                    className={clsx("h-full rounded-full transition-all duration-500",
+                      sysStats.disk_used_pct < 70 ? "bg-emerald-500" :
+                      sysStats.disk_used_pct < 85 ? "bg-amber-400" : "bg-red-500")}
+                    style={{ width: `${Math.min(100, sysStats.disk_used_pct)}%` }}
+                  />
+                </div>
+                <span className="font-mono tabular-nums">{sysStats.disk_free_gb.toFixed(0)}GB 여유</span>
+              </div>
+            </div>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -371,9 +485,10 @@ export default function App() {
         {/* 탭 */}
         <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700">
           {([
-            ["process", "프로세스", <PlayCircle className="w-3.5 h-3.5" />],
-            ["history", "히스토리", <History className="w-3.5 h-3.5" />],
-            ["startup", "시작 프로그램", <Zap className="w-3.5 h-3.5" />],
+            ["process",  "프로세스",    <PlayCircle className="w-3.5 h-3.5" />],
+            ["history",  "히스토리",    <History    className="w-3.5 h-3.5" />],
+            ["insights", "인사이트",    <BarChart2  className="w-3.5 h-3.5" />],
+            ["startup",  "시작 프로그램", <Zap       className="w-3.5 h-3.5" />],
           ] as const).map(([id, label, icon]) => (
             <button
               key={id}
@@ -448,6 +563,7 @@ export default function App() {
                 selected={selected}
                 onToggle={toggle}
                 onDetail={(pid, name) => setDetailPid({ pid, name })}
+                onProtect={handleProtect}
                 loading={loading}
                 error={loadError}
               />
@@ -459,6 +575,13 @@ export default function App() {
         {tab === "history" && (
           <div className="flex-1 min-h-0">
             <HistoryPanel />
+          </div>
+        )}
+
+        {/* 인사이트 탭 */}
+        {tab === "insights" && (
+          <div className="flex-1 min-h-0">
+            <InsightsPanel />
           </div>
         )}
 
@@ -530,6 +653,9 @@ export default function App() {
       )}
       {showShortcuts && (
         <ShortcutsDialog onClose={() => setShowShortcuts(false)} />
+      )}
+      {showOnboarding && (
+        <OnboardingTour onComplete={completeOnboarding} />
       )}
     </div>
   );

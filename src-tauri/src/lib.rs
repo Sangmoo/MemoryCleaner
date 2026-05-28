@@ -61,8 +61,10 @@ fn make_status_icon(percent: f64) -> Vec<u8> {
 async fn auto_clean_loop(app: AppHandle) {
     let mut ticker = tokio::time::interval(Duration::from_secs(5));
     let mut last_clean = Instant::now();
-    let mut warned_above = false;     // 경고 알림 상태 (히스테리시스)
-    let mut last_icon_band: i8 = -1;  // 0=초록, 1=노랑, 2=빨강
+    let mut warned_above = false;         // 경고 알림 상태 (히스테리시스)
+    let mut last_icon_band: i8 = -1;      // 0=초록, 1=노랑, 2=빨강
+    // 핫 프로세스 감지 상태 (PID → 경고 발령됨)
+    let mut hot_warned: std::collections::HashMap<u32, bool> = std::collections::HashMap::new();
 
     loop {
         ticker.tick().await;
@@ -93,9 +95,9 @@ async fn auto_clean_loop(app: AppHandle) {
             }
         }
 
-        // ── 자동 정리: 설정 확인 ────────────────────────────────────────────
+        // ── 자동 정리 + 경고: 설정 확인 ────────────────────────────────────
         let (enabled, threshold_pct, interval_secs, protected, excl_start, excl_end,
-             warn_enabled, warn_threshold) = {
+             warn_enabled, warn_threshold, hot_detection) = {
             let Ok(s) = state.settings.lock() else { continue };
             (
                 s.auto_clean.enabled,
@@ -106,6 +108,7 @@ async fn auto_clean_loop(app: AppHandle) {
                 s.auto_clean.exclude_end_hour,
                 s.warn_notifications_enabled,
                 s.warn_threshold_percent,
+                s.hot_process_detection,
             )
         };
 
@@ -122,8 +125,35 @@ async fn auto_clean_loop(app: AppHandle) {
                     warned_above = true;
                 }
             } else if percent < warn_threshold - 5.0 {
-                // 5% 히스테리시스로 다시 경고 가능 상태 복귀
                 warned_above = false;
+            }
+        }
+
+        // ── 핫 프로세스 감지 (CPU 급등) ─────────────────────────────────────
+        if hot_detection {
+            let spikes: Vec<(u32, String, f32)> = {
+                let Ok(mut sys) = state.system.lock() else { continue };
+                sys.refresh_processes(ProcessesToUpdate::All, false);
+                let mut found = vec![];
+                for (pid, p) in sys.processes() {
+                    let cpu  = p.cpu_usage();
+                    let name = p.name().to_string_lossy().to_string();
+                    let pid_u32 = pid.as_u32();
+                    if commands::is_sys_name(&name) { continue; }
+                    let was_hot = hot_warned.get(&pid_u32).copied().unwrap_or(false);
+                    if cpu > 70.0 && !was_hot {
+                        hot_warned.insert(pid_u32, true);
+                        found.push((pid_u32, name, cpu));
+                    } else if cpu < 25.0 && was_hot {
+                        hot_warned.remove(&pid_u32);
+                    }
+                }
+                found
+            };
+            for (pid, name, cpu) in spikes {
+                let _ = app.emit("hot-process", serde_json::json!({
+                    "pid": pid, "name": name, "cpu": cpu
+                }));
             }
         }
 
@@ -142,7 +172,7 @@ async fn auto_clean_loop(app: AppHandle) {
             if excluded { continue; }
         }
 
-        // 임계값 체크 (percent 이미 위에서 읽음)
+        // 임계값 체크
         if percent < threshold_pct { continue; }
 
         // PID 수집
@@ -269,6 +299,11 @@ pub fn run() {
             commands::clear_history,
             commands::get_startup_programs_cmd,
             commands::toggle_startup,
+            // v0.3.0 신규
+            commands::get_system_info,
+            commands::get_system_stats,
+            commands::set_process_priority,
+            commands::export_history_csv,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

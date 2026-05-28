@@ -507,3 +507,144 @@ pub fn get_startup_programs_cmd() -> Result<Vec<StartupProgram>, String> {
 pub fn toggle_startup(name: String, source: String, enabled: bool) -> Result<(), String> {
     set_startup_enabled(&name, &source, enabled)
 }
+
+// ── 시스템 정보 ──────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct SystemInfo {
+    pub cpu_name: String,
+    pub cpu_cores: usize,
+    pub cpu_logical: usize,
+    pub total_ram_gb: f64,
+    pub os_name: String,
+    pub os_version: String,
+    pub uptime_secs: u64,
+    pub hostname: String,
+    pub kernel_version: String,
+}
+
+#[tauri::command]
+pub fn get_system_info(state: tauri::State<AppState>) -> Result<SystemInfo, String> {
+    let sys = state.system.lock().map_err(|e| e.to_string())?;
+    Ok(SystemInfo {
+        cpu_name: sys.cpus().first()
+            .map(|c| c.brand().to_string())
+            .unwrap_or_else(|| "알 수 없음".into()),
+        cpu_cores: sys.physical_core_count().unwrap_or(0),
+        cpu_logical: sys.cpus().len(),
+        total_ram_gb: sys.total_memory() as f64 / 1_073_741_824.0,
+        os_name: System::name().unwrap_or_else(|| "알 수 없음".into()),
+        os_version: System::os_version().unwrap_or_else(|| "알 수 없음".into()),
+        uptime_secs: System::uptime(),
+        hostname: System::host_name().unwrap_or_else(|| "알 수 없음".into()),
+        kernel_version: System::kernel_version().unwrap_or_else(|| "알 수 없음".into()),
+    })
+}
+
+// ── 시스템 실시간 통계 (CPU / 디스크) ────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct SystemStats {
+    pub cpu_percent: f64,
+    pub disk_free_gb: f64,
+    pub disk_total_gb: f64,
+    pub disk_used_pct: f64,
+}
+
+#[tauri::command]
+pub fn get_system_stats(state: tauri::State<AppState>) -> Result<SystemStats, String> {
+    let mut sys = state.system.lock().map_err(|e| e.to_string())?;
+    sys.refresh_cpu_usage();
+
+    let cpu_percent = sys.global_cpu_usage() as f64;
+
+    // 시스템 드라이브 디스크 용량
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    let mut disk_free_gb  = 0.0f64;
+    let mut disk_total_gb = 0.0f64;
+
+    for disk in disks.list() {
+        let mount = disk.mount_point().to_string_lossy();
+        #[cfg(target_os = "windows")]
+        {
+            // Windows: C:\ 드라이브만 표시
+            if !mount.starts_with("C:\\") && !mount.starts_with("c:\\") {
+                continue;
+            }
+        }
+        disk_total_gb += disk.total_space()     as f64 / 1_073_741_824.0;
+        disk_free_gb  += disk.available_space() as f64 / 1_073_741_824.0;
+        #[cfg(target_os = "windows")]
+        break; // 첫 번째 C: 드라이브만
+    }
+
+    let disk_used_pct = if disk_total_gb > 0.0 {
+        ((disk_total_gb - disk_free_gb) / disk_total_gb) * 100.0
+    } else {
+        0.0
+    };
+
+    Ok(SystemStats {
+        cpu_percent,
+        disk_free_gb,
+        disk_total_gb,
+        disk_used_pct,
+    })
+}
+
+// ── 프로세스 우선순위 조절 ────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn set_process_priority(pid: u32, level: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::System::Threading::{
+            OpenProcess, SetPriorityClass,
+            PROCESS_SET_INFORMATION, PROCESS_QUERY_INFORMATION,
+            IDLE_PRIORITY_CLASS, BELOW_NORMAL_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS,
+        };
+
+        let class = match level.as_str() {
+            "idle"         => IDLE_PRIORITY_CLASS,
+            "below_normal" => BELOW_NORMAL_PRIORITY_CLASS,
+            _              => NORMAL_PRIORITY_CLASS,
+        };
+
+        unsafe {
+            let access = PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION;
+            let handle = OpenProcess(access, false, pid)
+                .map_err(|e| format!("OpenProcess 실패: {e}"))?;
+            let r = SetPriorityClass(handle, class)
+                .map_err(|e| format!("SetPriorityClass 실패: {e}"));
+            let _ = CloseHandle(handle);
+            r?;
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    { let _ = (pid, level); Err("Windows 전용 기능입니다.".into()) }
+}
+
+// ── 히스토리 CSV 내보내기 ─────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn export_history_csv(state: tauri::State<AppState>) -> Result<String, String> {
+    let history = load_history(&state.data_dir);
+    let mut csv = String::from(
+        "timestamp,process_name,pid,mem_freed_mb,success,error,trigger\n"
+    );
+    for e in &history {
+        csv.push_str(&format!(
+            "{},{},{},{:.2},{},{},{}\n",
+            e.timestamp,
+            e.process_name.replace(',', ";"),
+            e.pid,
+            e.mem_freed_mb,
+            e.success,
+            e.error.as_deref().unwrap_or("").replace(',', ";"),
+            e.trigger,
+        ));
+    }
+    Ok(csv)
+}

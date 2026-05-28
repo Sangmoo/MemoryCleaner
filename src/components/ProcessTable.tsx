@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { FixedSizeList as List } from "react-window";
 import {
   Ban, ChevronDown, ChevronUp, ChevronsUpDown,
-  Info, Layers, Search, Shield, TrendingUp,
+  Info, Layers, Search, Shield, TrendingUp, ShieldPlus, GaugeCircle,
 } from "lucide-react";
 import clsx from "clsx";
 import type { ProcessInfo } from "../lib/types";
+import { api } from "../lib/api";
 
 // ── 메모리 누수 감지 ────────────────────────────────────────────────────────
 // PID별 최근 메모리 측정값 추적 → 지속적 증가 시 누수 의심
@@ -36,6 +38,97 @@ interface DisplayRow {
   leaking: boolean;     // 메모리 누수 의심
 }
 
+// ── 컨텍스트 메뉴 ────────────────────────────────────────────────────────────
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  row: DisplayRow;
+}
+
+function ContextMenu({
+  state, onClose, onProtect,
+}: {
+  state: ContextMenuState;
+  onClose: () => void;
+  onProtect: (name: string) => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  const setPriority = async (level: "idle" | "below_normal" | "normal") => {
+    onClose();
+    const pids = state.row.pids;
+    let ok = 0; let fail = 0;
+    for (const pid of pids) {
+      try { await api.setProcessPriority(pid, level); ok++; }
+      catch { fail++; }
+    }
+    alert(level === "normal"
+      ? `우선순위 정상화: ${ok}개 완료${fail > 0 ? `, ${fail}개 실패` : ""}`
+      : `우선순위 낮춤 (${level === "idle" ? "유휴" : "낮음"}): ${ok}개 완료${fail > 0 ? `, ${fail}개 실패` : ""}`
+    );
+  };
+
+  const menuItems: Array<{ icon: React.ReactNode; label: string; onClick: () => void; danger?: boolean }> = [
+    {
+      icon: <ShieldPlus className="w-3.5 h-3.5 text-emerald-500" />,
+      label: "보호 목록에 추가",
+      onClick: () => { onClose(); onProtect(state.row.name); },
+    },
+    {
+      icon: <GaugeCircle className="w-3.5 h-3.5 text-amber-500" />,
+      label: "CPU 우선순위 낮춤",
+      onClick: () => setPriority("below_normal"),
+    },
+    {
+      icon: <GaugeCircle className="w-3.5 h-3.5 text-red-400" />,
+      label: "CPU 우선순위 유휴",
+      onClick: () => setPriority("idle"),
+    },
+    {
+      icon: <GaugeCircle className="w-3.5 h-3.5 text-slate-400" />,
+      label: "CPU 우선순위 정상화",
+      onClick: () => setPriority("normal"),
+    },
+  ];
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      style={{ position: "fixed", top: state.y, left: state.x, zIndex: 9999 }}
+      className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 py-1 min-w-[180px] animate-fade-in"
+    >
+      <div className="px-3 py-1.5 text-xs font-semibold text-slate-400 border-b border-slate-100 dark:border-slate-700 truncate">
+        {state.row.name}
+        {state.row.count > 1 && ` (×${state.row.count})`}
+      </div>
+      {menuItems.map((item) => (
+        <button
+          key={item.label}
+          onClick={item.onClick}
+          className={clsx(
+            "w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 dark:text-slate-200",
+            "hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-left",
+            item.danger && "text-red-600 dark:text-red-400"
+          )}
+        >
+          {item.icon}
+          {item.label}
+        </button>
+      ))}
+    </div>,
+    document.body
+  );
+}
+
 // ── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -43,6 +136,7 @@ interface Props {
   selected: Set<number>;
   onToggle: (pids: number[]) => void;
   onDetail?: (pid: number, name: string) => void;
+  onProtect?: (name: string) => void;
   loading?: boolean;
   error?: string | null;
 }
@@ -57,6 +151,7 @@ interface RowProps {
     selected: Set<number>;
     onToggle: (pids: number[]) => void;
     onDetail?: (pid: number, name: string) => void;
+    onContextMenu?: (x: number, y: number, row: DisplayRow) => void;
   };
 }
 
@@ -80,10 +175,17 @@ const Row = ({ index, style, data }: RowProps) => {
     if (row.count === 1) data.onDetail?.(row.pids[0], row.name);
   }, [row, data]);
 
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    if (row.is_system) return;
+    e.preventDefault();
+    data.onContextMenu?.(e.clientX, e.clientY, row);
+  }, [row, data]);
+
   return (
     <div
       style={style}
       onClick={handleClick}
+      onContextMenu={handleContextMenu}
       className={clsx(
         "row-hover flex items-center px-3 text-sm transition-colors select-none",
         !canSelect && "cursor-not-allowed",
@@ -211,7 +313,7 @@ function SortHeader({
 
 // ── ProcessTable ──────────────────────────────────────────────────────────────
 
-export function ProcessTable({ processes, selected, onToggle, onDetail, loading, error }: Props) {
+export function ProcessTable({ processes, selected, onToggle, onDetail, onProtect, loading, error }: Props) {
   const listRef = useRef<List>(null);
   const listContainerRef = useRef<HTMLDivElement>(null);
   const [listHeight, setListHeight] = useState(400);
@@ -219,6 +321,7 @@ export function ProcessTable({ processes, selected, onToggle, onDetail, loading,
   const [sortKey, setSortKey] = useState<SortKey>("mem_bytes");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [isGrouped, setIsGrouped] = useState(false);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   // ── 스크롤 위치 유지 ──────────────────────────────────────────────────
   const scrollOffsetRef = useRef(0);
@@ -370,9 +473,13 @@ export function ProcessTable({ processes, selected, onToggle, onDetail, loading,
     });
   }, [filtered, isGrouped, sortKey, sortDir]);
 
+  const handleContextMenu = useCallback((x: number, y: number, row: DisplayRow) => {
+    setContextMenu({ x, y, row });
+  }, []);
+
   const itemData = useMemo(
-    () => ({ rows: displayRows, selected, onToggle, onDetail }),
-    [displayRows, selected, onToggle, onDetail]
+    () => ({ rows: displayRows, selected, onToggle, onDetail, onContextMenu: handleContextMenu }),
+    [displayRows, selected, onToggle, onDetail, handleContextMenu]
   );
 
   return (
@@ -459,6 +566,15 @@ export function ProcessTable({ processes, selected, onToggle, onDetail, loading,
           <Layers className="w-3 h-3" />
           그룹화 ON — {filtered.length}개 프로세스 → {displayRows.length}개 그룹
         </div>
+      )}
+
+      {/* 우클릭 컨텍스트 메뉴 */}
+      {contextMenu && (
+        <ContextMenu
+          state={contextMenu}
+          onClose={() => setContextMenu(null)}
+          onProtect={(name) => { onProtect?.(name); setContextMenu(null); }}
+        />
       )}
     </div>
   );

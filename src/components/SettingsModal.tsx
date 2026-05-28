@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { X, Plus, Save, Monitor, Clock, RefreshCw, Bell, Download, Upload } from "lucide-react";
+import { X, Plus, Save, Monitor, Clock, RefreshCw, Bell, Download, Upload, Cpu } from "lucide-react";
 import clsx from "clsx";
 import { api, isTauri } from "../lib/api";
-import type { AppSettings } from "../lib/types";
+import type { AppSettings, SettingsProfile } from "../lib/types";
 
 interface Props {
   initial: AppSettings;
@@ -401,6 +401,82 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
                 )}
               </div>
             </div>
+          </section>
+
+          {/* ── 설정 프리셋 ───────────────────────────────────────── */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+              <span className="w-1.5 h-4 rounded-full bg-purple-500 inline-block" />
+              설정 프리셋
+              <span className="text-xs font-normal text-slate-400">(클릭하면 즉시 적용)</span>
+            </h3>
+            <div className="grid grid-cols-3 gap-2">
+              {(settings.profiles ?? []).map((profile: SettingsProfile) => (
+                <button
+                  key={profile.id}
+                  type="button"
+                  onClick={() => {
+                    setSettings(prev => ({
+                      ...prev,
+                      auto_clean: {
+                        ...prev.auto_clean,
+                        enabled: profile.auto_clean_enabled,
+                        threshold_percent: profile.auto_clean_threshold,
+                        interval_seconds: profile.auto_clean_interval_seconds,
+                      },
+                      warn_threshold_percent: profile.warn_threshold_percent,
+                    }));
+                  }}
+                  className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60
+                    border border-slate-200 dark:border-slate-700
+                    hover:border-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20
+                    transition-all text-center group"
+                >
+                  <span className="text-2xl leading-none">{profile.icon}</span>
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 group-hover:text-brand-600 dark:group-hover:text-brand-400">
+                    {profile.name}
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    {profile.auto_clean_threshold}% / {profile.auto_clean_interval_seconds < 60
+                      ? `${profile.auto_clean_interval_seconds}초`
+                      : `${Math.floor(profile.auto_clean_interval_seconds / 60)}분`}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {/* ── CPU 급등 감지 ─────────────────────────────────────── */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+              <span className="w-1.5 h-4 rounded-full bg-orange-500 inline-block" />
+              CPU 급등 감지
+            </h3>
+            <label className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 cursor-pointer">
+              <div className="flex items-center gap-2.5">
+                <Cpu className="w-4 h-4 text-slate-400" />
+                <div>
+                  <div className="text-sm font-medium">CPU 70%+ 급등 프로세스 알림</div>
+                  <div className="text-xs text-slate-400 mt-0.5">비시스템 프로세스가 CPU를 과다 사용 시 앱 내 알림 표시</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSettings(prev => ({
+                  ...prev,
+                  hot_process_detection: !(prev.hot_process_detection ?? true),
+                }))}
+                className={clsx(
+                  "relative w-11 h-6 rounded-full transition-colors duration-200 overflow-hidden flex-shrink-0",
+                  (settings.hot_process_detection ?? true) ? "bg-orange-500" : "bg-slate-300 dark:bg-slate-600"
+                )}
+              >
+                <span className={clsx(
+                  "absolute top-[4px] w-[16px] h-[16px] bg-white rounded-full shadow transition-all duration-200",
+                  (settings.hot_process_detection ?? true) ? "left-[27px]" : "left-[4px]"
+                )} />
+              </button>
+            </label>
           </section>
 
           {/* ── 보호 프로세스 ──────────────────────────────────────── */}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Trash2, RefreshCw } from "lucide-react";
+import { Trash2, RefreshCw, Download } from "lucide-react";
 import clsx from "clsx";
 import { api } from "../lib/api";
 import type { HistoryEntry } from "../lib/types";
@@ -23,6 +23,22 @@ export function HistoryPanel() {
     setEntries([]);
   };
 
+  const exportCsv = async () => {
+    try {
+      const csv = await api.exportHistoryCsv();
+      const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const ts = new Date().toISOString().slice(0, 10);
+      a.download = `memory-cleaner-history-${ts}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert("CSV 내보내기 실패: " + String(e));
+    }
+  };
+
   const fmtTime = (iso: string) => {
     try {
       return new Date(iso).toLocaleString("ko-KR", {
@@ -41,6 +57,9 @@ export function HistoryPanel() {
         <div className="flex gap-2">
           <button onClick={load} className="btn btn-secondary" disabled={loading}>
             <RefreshCw className={clsx("w-3.5 h-3.5", loading && "animate-spin")} /> 새로고침
+          </button>
+          <button onClick={exportCsv} className="btn btn-secondary" disabled={entries.length === 0} title="CSV로 내보내기">
+            <Download className="w-3.5 h-3.5" /> CSV
           </button>
           <button onClick={clear} className="btn btn-ghost text-red-500" disabled={entries.length === 0}>
             <Trash2 className="w-3.5 h-3.5" /> 전체 삭제

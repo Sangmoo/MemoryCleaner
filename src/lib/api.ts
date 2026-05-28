@@ -2,7 +2,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type {
   AppSettings, CleanupOptions, EmptySetReport, HistoryEntry, MemorySnapshot,
   ProcessDetails, ProcessInfo, RecoveryReport, StartupProgram,
-  TempCleanupReport,
+  SystemInfo, SystemStats, TempCleanupReport,
 } from "./types";
 
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -82,6 +82,20 @@ export const api = {
   },
   toggleStartup(name: string, source: string, enabled: boolean): Promise<void> {
     return invoke("toggle_startup", { name, source, enabled });
+  },
+
+  // ── v0.3.0 신규 ────────────────────────────────────────────────────────
+  getSystemInfo(): Promise<SystemInfo> {
+    return invoke("get_system_info");
+  },
+  getSystemStats(): Promise<SystemStats> {
+    return invoke("get_system_stats");
+  },
+  setProcessPriority(pid: number, level: "idle" | "below_normal" | "normal"): Promise<void> {
+    return invoke("set_process_priority", { pid, level });
+  },
+  exportHistoryCsv(): Promise<string> {
+    return invoke("export_history_csv");
   },
 };
 

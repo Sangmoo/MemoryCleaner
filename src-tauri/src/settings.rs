@@ -27,6 +27,38 @@ impl Default for AutoCleanConfig {
     }
 }
 
+/// 설정 프리셋 (게임/업무/절전 모드 등)
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SettingsProfile {
+    pub id: String,
+    pub name: String,
+    pub icon: String,
+    pub auto_clean_enabled: bool,
+    pub auto_clean_threshold: f64,
+    pub auto_clean_interval_seconds: u64,
+    pub warn_threshold_percent: f64,
+}
+
+fn default_profiles() -> Vec<SettingsProfile> {
+    vec![
+        SettingsProfile {
+            id: "game".into(), name: "게임 모드".into(), icon: "🎮".into(),
+            auto_clean_enabled: true, auto_clean_threshold: 92.0,
+            auto_clean_interval_seconds: 300, warn_threshold_percent: 95.0,
+        },
+        SettingsProfile {
+            id: "work".into(), name: "업무 모드".into(), icon: "💼".into(),
+            auto_clean_enabled: true, auto_clean_threshold: 80.0,
+            auto_clean_interval_seconds: 60, warn_threshold_percent: 85.0,
+        },
+        SettingsProfile {
+            id: "power_save".into(), name: "절전 모드".into(), icon: "🔋".into(),
+            auto_clean_enabled: true, auto_clean_threshold: 70.0,
+            auto_clean_interval_seconds: 30, warn_threshold_percent: 75.0,
+        },
+    ]
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppSettings {
     pub auto_clean: AutoCleanConfig,
@@ -44,11 +76,21 @@ pub struct AppSettings {
     /// 메모리 경고 임계값 (%)
     #[serde(default = "default_warn_threshold")]
     pub warn_threshold_percent: f64,
+    /// 설정 프리셋 목록
+    #[serde(default = "default_profiles")]
+    pub profiles: Vec<SettingsProfile>,
+    /// 온보딩 투어 완료 여부
+    #[serde(default)]
+    pub onboarding_done: bool,
+    /// CPU 급등 감지 활성화
+    #[serde(default = "default_hot_detection")]
+    pub hot_process_detection: bool,
 }
 
 fn default_process_refresh_secs() -> u64 { 10 }
 fn default_warn_enabled() -> bool { true }
 fn default_warn_threshold() -> f64 { 90.0 }
+fn default_hot_detection() -> bool { true }
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -60,6 +102,9 @@ impl Default for AppSettings {
             process_refresh_seconds: 10,
             warn_notifications_enabled: true,
             warn_threshold_percent: 90.0,
+            profiles: default_profiles(),
+            onboarding_done: false,
+            hot_process_detection: true,
         }
     }
 }
