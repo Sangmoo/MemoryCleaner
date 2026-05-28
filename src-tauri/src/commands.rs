@@ -1,5 +1,5 @@
 use chrono::Local;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -343,6 +343,86 @@ pub fn cleanup_temp_files() -> Result<TempCleanupReport, String> {
     }
 
     for d in &dirs { if d.exists() { clean_dir(d, &mut report); } }
+    Ok(report)
+}
+
+// ── 확장 디스크 정리 ────────────────────────────────────────────────────────
+
+#[derive(Deserialize, Debug)]
+pub struct CleanupOptions {
+    #[serde(default)] pub temp_files: bool,
+    #[serde(default)] pub browser_cache_chrome: bool,
+    #[serde(default)] pub browser_cache_edge: bool,
+    #[serde(default)] pub windows_update_cache: bool,
+    #[serde(default)] pub recycle_bin: bool,
+}
+
+#[tauri::command]
+pub fn cleanup_disk(options: CleanupOptions) -> Result<TempCleanupReport, String> {
+    let mut report = TempCleanupReport { files_deleted: 0, dirs_deleted: 0, bytes_freed: 0, errors: 0 };
+
+    if options.temp_files {
+        let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+        if let Ok(t) = std::env::var("TEMP") { dirs.push(t.into()); }
+        if let Ok(t) = std::env::var("TMP")  {
+            let p: std::path::PathBuf = t.into();
+            if !dirs.contains(&p) { dirs.push(p); }
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let win = std::path::PathBuf::from(r"C:\Windows\Temp");
+            if win.exists() { dirs.push(win); }
+        }
+        for d in &dirs { if d.exists() { clean_dir(d, &mut report); } }
+    }
+
+    if options.browser_cache_chrome {
+        if let Ok(la) = std::env::var("LOCALAPPDATA") {
+            let base = std::path::PathBuf::from(la);
+            for sub in &[
+                r"Google\Chrome\User Data\Default\Cache",
+                r"Google\Chrome\User Data\Default\Code Cache",
+                r"Google\Chrome\User Data\Default\GPUCache",
+            ] {
+                let p = base.join(sub);
+                if p.exists() { clean_dir(&p, &mut report); }
+            }
+        }
+    }
+
+    if options.browser_cache_edge {
+        if let Ok(la) = std::env::var("LOCALAPPDATA") {
+            let base = std::path::PathBuf::from(la);
+            for sub in &[
+                r"Microsoft\Edge\User Data\Default\Cache",
+                r"Microsoft\Edge\User Data\Default\Code Cache",
+                r"Microsoft\Edge\User Data\Default\GPUCache",
+            ] {
+                let p = base.join(sub);
+                if p.exists() { clean_dir(&p, &mut report); }
+            }
+        }
+    }
+
+    if options.windows_update_cache {
+        #[cfg(target_os = "windows")]
+        {
+            let p = std::path::PathBuf::from(r"C:\Windows\SoftwareDistribution\Download");
+            if p.exists() { clean_dir(&p, &mut report); }
+        }
+    }
+
+    if options.recycle_bin {
+        #[cfg(target_os = "windows")]
+        {
+            // 모든 드라이브의 $Recycle.Bin 시도 (액세스 가능한 것만)
+            for drive in &["C:", "D:", "E:"] {
+                let p = std::path::PathBuf::from(format!(r"{}\$Recycle.Bin", drive));
+                if p.exists() { clean_dir(&p, &mut report); }
+            }
+        }
+    }
+
     Ok(report)
 }
 

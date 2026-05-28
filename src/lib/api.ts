@@ -1,6 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type {
-  AppSettings, EmptySetReport, HistoryEntry, MemorySnapshot,
+  AppSettings, CleanupOptions, EmptySetReport, HistoryEntry, MemorySnapshot,
   ProcessDetails, ProcessInfo, RecoveryReport, StartupProgram,
   TempCleanupReport,
 } from "./types";
@@ -47,6 +47,9 @@ export const api = {
   // ── 임시 파일 ─────────────────────────────────────────────────────────
   cleanupTempFiles(): Promise<TempCleanupReport> {
     return invoke("cleanup_temp_files");
+  },
+  cleanupDisk(options: CleanupOptions): Promise<TempCleanupReport> {
+    return invoke("cleanup_disk", { options });
   },
 
   // ── 설정 ──────────────────────────────────────────────────────────────

@@ -38,9 +38,17 @@ pub struct AppSettings {
     /// 프로세스 목록 자동 새로고침 간격 (초)
     #[serde(default = "default_process_refresh_secs")]
     pub process_refresh_seconds: u64,
+    /// 메모리 경고 알림 활성화
+    #[serde(default = "default_warn_enabled")]
+    pub warn_notifications_enabled: bool,
+    /// 메모리 경고 임계값 (%)
+    #[serde(default = "default_warn_threshold")]
+    pub warn_threshold_percent: f64,
 }
 
 fn default_process_refresh_secs() -> u64 { 10 }
+fn default_warn_enabled() -> bool { true }
+fn default_warn_threshold() -> f64 { 90.0 }
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -50,6 +58,8 @@ impl Default for AppSettings {
             theme: "dark".to_string(),
             autostart: false,
             process_refresh_seconds: 10,
+            warn_notifications_enabled: true,
+            warn_threshold_percent: 90.0,
         }
     }
 }

@@ -1,4 +1,6 @@
-import { CheckCircle2, X, AlertCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CheckCircle2, X, AlertCircle, ArrowRight, TrendingDown } from "lucide-react";
+import clsx from "clsx";
 import type { RecoveryReport } from "../lib/types";
 
 interface Props {
@@ -6,11 +8,47 @@ interface Props {
   onClose: () => void;
 }
 
+// 게이지 색상: 사용률에 따라
+function gaugeColor(pct: number) {
+  if (pct < 60) return "from-emerald-400 to-emerald-600";
+  if (pct < 80) return "from-amber-400 to-amber-600";
+  return "from-red-400 to-red-600";
+}
+
+function Gauge({ percent, label, animated }: { percent: number; label: string; animated: number }) {
+  return (
+    <div className="flex-1 space-y-1.5">
+      <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+        <span>{label}</span>
+        <span className="font-mono font-bold text-base text-slate-700 dark:text-slate-200 tabular-nums">
+          {percent.toFixed(1)}%
+        </span>
+      </div>
+      <div className="h-3 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+        <div
+          className={clsx(
+            "h-full bg-gradient-to-r rounded-full transition-all duration-700 ease-out",
+            gaugeColor(percent)
+          )}
+          style={{ width: `${Math.min(100, Math.max(0, animated))}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function ResultDialog({ report, onClose }: Props) {
   const success = report.results.filter(r => r.success).length;
   const fail = report.results.length - success;
   const recovered = report.recovered_gb;
   const isPositive = recovered > 0;
+
+  // before → after 게이지 애니메이션
+  const [animatedAfter, setAnimatedAfter] = useState(report.before_percent);
+  useEffect(() => {
+    const t = setTimeout(() => setAnimatedAfter(report.after_percent), 200);
+    return () => clearTimeout(t);
+  }, [report.after_percent]);
 
   return (
     <div
@@ -31,49 +69,50 @@ export function ResultDialog({ report, onClose }: Props) {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 mb-5">
-          <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
-            <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Before</div>
-            <div className="text-xl font-bold font-mono">
-              {report.before_percent.toFixed(1)}%
-            </div>
+        {/* Before / After 게이지 비교 */}
+        <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-4 mb-4 space-y-3">
+          <Gauge percent={report.before_percent} label="Before" animated={report.before_percent} />
+          <div className="flex justify-center">
+            <ArrowRight className={clsx("w-4 h-4", isPositive ? "text-emerald-500" : "text-slate-400")} />
           </div>
-          <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
-            <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">After</div>
-            <div className="text-xl font-bold font-mono">
-              {report.after_percent.toFixed(1)}%
-            </div>
-          </div>
+          <Gauge percent={report.after_percent} label="After" animated={animatedAfter} />
         </div>
 
+        {/* 확보량 강조 */}
         <div
-          className={`rounded-lg p-4 mb-4 ${
+          className={clsx(
+            "rounded-xl p-4 mb-4 flex items-center gap-3",
             isPositive
-              ? "bg-emerald-50 dark:bg-emerald-900/20"
+              ? "bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-900/30 dark:to-emerald-900/10 ring-1 ring-emerald-200 dark:ring-emerald-800"
               : "bg-slate-50 dark:bg-slate-800"
-          }`}
+          )}
         >
-          <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">메모리 확보</div>
-          <div
-            className={`text-2xl font-bold font-mono ${
-              isPositive ? "text-emerald-600 dark:text-emerald-400" : "text-slate-700 dark:text-slate-200"
-            }`}
-          >
-            {isPositive ? "+" : ""}
-            {recovered.toFixed(2)} GB
-            <span className="text-sm ml-2 opacity-75">
-              ({isPositive ? "+" : ""}
-              {report.recovery_pct.toFixed(1)}%)
-            </span>
+          {isPositive && (
+            <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
+              <TrendingDown className="w-5 h-5 text-white" />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="text-xs text-slate-500 dark:text-slate-400">메모리 확보</div>
+            <div
+              className={clsx(
+                "text-2xl font-bold font-mono tabular-nums",
+                isPositive ? "text-emerald-600 dark:text-emerald-400" : "text-slate-700 dark:text-slate-200"
+              )}
+            >
+              {isPositive ? "+" : ""}
+              {recovered.toFixed(2)} GB
+              <span className="text-sm ml-2 opacity-75">
+                ({isPositive ? "+" : ""}{report.recovery_pct.toFixed(1)}%)
+              </span>
+            </div>
           </div>
         </div>
 
         <div className="text-sm text-slate-600 dark:text-slate-300">
           <span className="font-medium">완료:</span> {success}개 종료
           {fail > 0 && (
-            <>
-              , <span className="text-rose-600">{fail}개 실패</span>
-            </>
+            <>, <span className="text-rose-600">{fail}개 실패</span></>
           )}
         </div>
 

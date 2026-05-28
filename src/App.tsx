@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Zap, Moon, Sun, RefreshCw, CheckSquare, Sparkles, Square,
-  Skull, Loader2, Settings, History, PlayCircle, Wind, Trash2,
+  Skull, Loader2, Settings, History, PlayCircle, Wind,
+  AlertTriangle, HardDrive, Keyboard,
 } from "lucide-react";
 import clsx from "clsx";
 import { listen } from "@tauri-apps/api/event";
 
 import { api, isTauri } from "./lib/api";
-import type { AppSettings, MemorySnapshot, ProcessInfo, RecoveryReport, TempCleanupReport } from "./lib/types";
+import type { AppSettings, MemorySnapshot, ProcessInfo, RecoveryReport } from "./lib/types";
 import { MemoryGauge } from "./components/MemoryGauge";
 import { MemoryGraph } from "./components/MemoryGraph";
 import { ProcessTable } from "./components/ProcessTable";
@@ -18,6 +19,7 @@ import { SettingsModal } from "./components/SettingsModal";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { StartupPanel } from "./components/StartupPanel";
 import { ProcessDetailModal } from "./components/ProcessDetailModal";
+import { DiskCleanupDialog } from "./components/DiskCleanupDialog";
 
 const MEM_REFRESH_MS = 3_000;
 const GRAPH_MAX_POINTS = 60; // 3분치
@@ -54,6 +56,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: "dark",
   autostart: false,
   process_refresh_seconds: 10,
+  warn_notifications_enabled: true,
+  warn_threshold_percent: 90,
 };
 
 export default function App() {
@@ -105,15 +109,24 @@ export default function App() {
 
   // ── 자동정리 완료 이벤트 수신 ─────────────────────────────────────────
   const [autoCleanToast, setAutoCleanToast] = useState(false);
+  const [memWarnToast, setMemWarnToast] = useState<number | null>(null);
   useEffect(() => {
     if (!isTauri) return;
-    let unlisten: (() => void) | null = null;
+    let unl1: (() => void) | null = null;
+    let unl2: (() => void) | null = null;
+
     listen("auto-clean-done", () => {
       setAutoCleanToast(true);
       setTimeout(() => setAutoCleanToast(false), 3000);
       refreshProcesses(threshold);
-    }).then(fn => { unlisten = fn; }).catch(console.error);
-    return () => { unlisten?.(); };
+    }).then(fn => { unl1 = fn; }).catch(console.error);
+
+    listen<number>("memory-warning", (e) => {
+      setMemWarnToast(e.payload);
+      setTimeout(() => setMemWarnToast(null), 6000);
+    }).then(fn => { unl2 = fn; }).catch(console.error);
+
+    return () => { unl1?.(); unl2?.(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 프로세스 ──────────────────────────────────────────────────────────
@@ -125,8 +138,10 @@ export default function App() {
   const [loadMs, setLoadMs] = useState<number | null>(null);
   const [killing, setKilling] = useState(false);
   const [emptyingSet, setEmptyingSet] = useState(false);
-  const [cleaningTemp, setCleaningTemp] = useState(false);
+  const [quickCleaning, setQuickCleaning] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showDiskCleanup, setShowDiskCleanup] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [report, setReport] = useState<RecoveryReport | null>(null);
 
   // ── 프로세스 상세 ──────────────────────────────────────────────────────
@@ -228,29 +243,58 @@ export default function App() {
     }
   };
 
-  // ── 임시 파일 정리 ────────────────────────────────────────────────────
-  const doCleanupTemp = async () => {
-    setCleaningTemp(true);
+  // ── 원클릭 Quick Clean: 추천 프로세스 즉시 정리 ──────────────────────
+  const doQuickClean = async () => {
+    const pids = processes.filter(p => p.safe_kill).map(p => p.pid);
+    if (pids.length === 0) {
+      alert("추천 프로세스가 없습니다.\n임계값을 낮추거나 잠시 후 다시 시도해 보세요.");
+      return;
+    }
+    setQuickCleaning(true);
     try {
-      const r: TempCleanupReport = await api.cleanupTempFiles();
-      const freed = r.bytes_freed < 1024 * 1024
-        ? `${(r.bytes_freed / 1024).toFixed(1)} KB`
-        : r.bytes_freed < 1024 * 1024 * 1024
-          ? `${(r.bytes_freed / 1024 / 1024).toFixed(1)} MB`
-          : `${(r.bytes_freed / 1024 / 1024 / 1024).toFixed(2)} GB`;
-      alert(
-        `임시 파일 정리 완료\n\n` +
-        `파일: ${r.files_deleted}개 삭제\n` +
-        `폴더: ${r.dirs_deleted}개 삭제\n` +
-        `확보: ${freed}\n` +
-        (r.errors > 0 ? `오류: ${r.errors}건 (사용 중인 파일 제외됨)` : "")
-      );
+      const result = await api.killProcesses(pids);
+      setReport(result);
+      setSelected(new Set());
+      await refreshProcesses(threshold);
     } catch (e) {
-      alert("임시 파일 정리 오류: " + String(e));
+      alert("Quick Clean 오류: " + String(e));
     } finally {
-      setCleaningTemp(false);
+      setQuickCleaning(false);
     }
   };
+
+  // ── 키보드 단축키 ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // input/textarea에 포커스 있으면 단축키 무시
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      // 모달 열려 있으면 일부 단축키만 처리
+      const modalOpen = showSettings || showDiskCleanup || showConfirm || detailPid !== null || showShortcuts;
+      if (e.key === "Escape" && modalOpen) return; // 모달 자체 닫기 우선
+
+      if (e.key === "F5") {
+        e.preventDefault();
+        refreshProcesses(threshold);
+        setNextRefreshIn(refreshIntervalSecs);
+      } else if (e.key === "Delete" && tab === "process" && !modalOpen) {
+        if (selected.size > 0) setShowConfirm(true);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a" && tab === "process" && !modalOpen) {
+        e.preventDefault();
+        selectAll();
+      } else if (e.key === "Escape" && tab === "process" && !modalOpen) {
+        deselectAll();
+      } else if (e.key === "?" && !modalOpen) {
+        setShowShortcuts(true);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "q" && tab === "process" && !modalOpen) {
+        e.preventDefault();
+        doQuickClean();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [tab, selected, processes, threshold, showSettings, showDiskCleanup, showConfirm, detailPid, showShortcuts, refreshIntervalSecs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 렌더 ──────────────────────────────────────────────────────────────
   return (
@@ -259,6 +303,17 @@ export default function App() {
       {autoCleanToast && (
         <div className="fixed top-4 right-4 z-50 px-4 py-2 bg-brand-600 text-white text-sm rounded-xl shadow-lg animate-fade-in">
           ✨ 자동 정리 완료
+        </div>
+      )}
+
+      {/* 메모리 경고 토스트 */}
+      {memWarnToast !== null && (
+        <div className="fixed top-4 right-4 z-50 px-4 py-3 bg-red-600 text-white text-sm rounded-xl shadow-lg animate-fade-in flex items-center gap-2.5 max-w-xs">
+          <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+          <div>
+            <div className="font-bold">메모리 경고</div>
+            <div className="text-xs opacity-90">RAM 사용률 {memWarnToast.toFixed(1)}% — 정리를 권장합니다.</div>
+          </div>
         </div>
       )}
 
@@ -279,6 +334,22 @@ export default function App() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* 원클릭 Quick Clean */}
+          <button
+            onClick={doQuickClean}
+            disabled={quickCleaning || killing}
+            title="추천 프로세스 즉시 정리 (Ctrl+Q)"
+            className="btn !px-3 !py-1.5 text-xs font-semibold bg-gradient-to-r from-emerald-500 to-brand-600 text-white hover:opacity-90 disabled:opacity-50 shadow-sm"
+          >
+            {quickCleaning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            Quick Clean
+          </button>
+          <button onClick={() => setShowDiskCleanup(true)} className="btn btn-ghost !px-2.5" title="디스크 정리">
+            <HardDrive className="w-4 h-4" /><span className="text-xs">디스크</span>
+          </button>
+          <button onClick={() => setShowShortcuts(true)} className="btn btn-ghost !px-2" title="단축키 도움말 (?)">
+            <Keyboard className="w-4 h-4" />
+          </button>
           <button onClick={() => setShowSettings(true)} className="btn btn-ghost !px-2.5">
             <Settings className="w-4 h-4" /><span className="text-xs">설정</span>
           </button>
@@ -338,15 +409,6 @@ export default function App() {
                 </button>
                 <button onClick={deselectAll} className="btn btn-ghost">
                   <Square className="w-3.5 h-3.5" /> 해제
-                </button>
-                <button
-                  onClick={doCleanupTemp}
-                  disabled={cleaningTemp}
-                  className="btn btn-ghost text-amber-600 dark:text-amber-400"
-                  title="임시 파일(TEMP) 정리"
-                >
-                  <Trash2 className={clsx("w-3.5 h-3.5", cleaningTemp && "animate-pulse")} />
-                  {cleaningTemp ? "정리 중…" : "임시 파일"}
                 </button>
                 <div className="ml-auto text-xs text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1.5">
                   {stats.total}개 · 추천 {stats.recommended}개 · 보호 {stats.protected}개
@@ -463,6 +525,53 @@ export default function App() {
           onClose={() => setDetailPid(null)}
         />
       )}
+      {showDiskCleanup && (
+        <DiskCleanupDialog onClose={() => setShowDiskCleanup(false)} />
+      )}
+      {showShortcuts && (
+        <ShortcutsDialog onClose={() => setShowShortcuts(false)} />
+      )}
+    </div>
+  );
+}
+
+// ── 단축키 도움말 ───────────────────────────────────────────────────────────
+
+function ShortcutsDialog({ onClose }: { onClose: () => void }) {
+  const items: Array<[string, string]> = [
+    ["F5",        "프로세스 목록 새로고침"],
+    ["Ctrl + Q",  "Quick Clean (추천 즉시 정리)"],
+    ["Ctrl + A",  "전체 선택"],
+    ["Delete",    "선택 항목 Kill 확인 창"],
+    ["Esc",       "선택 해제 (모달 닫기 우선)"],
+    ["?",         "이 도움말"],
+  ];
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+      <div className="bg-white dark:bg-surface-dark-alt rounded-2xl shadow-2xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-2.5">
+            <Keyboard className="w-5 h-5 text-brand-500" />
+            <h2 className="text-sm font-bold">키보드 단축키</h2>
+          </div>
+          <button onClick={onClose} className="btn btn-ghost !px-2">
+            <span className="text-lg leading-none">×</span>
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-2">
+          {items.map(([key, desc]) => (
+            <div key={key} className="flex items-center justify-between gap-3 py-1.5">
+              <kbd className="px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-700 text-xs font-mono font-semibold text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 shadow-sm">
+                {key}
+              </kbd>
+              <span className="text-sm text-slate-600 dark:text-slate-300">{desc}</span>
+            </div>
+          ))}
+          <div className="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+            * 입력 필드에 포커스가 있을 때는 단축키가 동작하지 않습니다.
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

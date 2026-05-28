@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { X, Plus, Save, Monitor, Clock, RefreshCw } from "lucide-react";
+import { X, Plus, Save, Monitor, Clock, RefreshCw, Bell, Download, Upload } from "lucide-react";
 import clsx from "clsx";
 import { api, isTauri } from "../lib/api";
 import type { AppSettings } from "../lib/types";
@@ -46,6 +46,8 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
         },
         autostart,
         process_refresh_seconds: settings.process_refresh_seconds ?? 10,
+        warn_notifications_enabled: settings.warn_notifications_enabled ?? true,
+        warn_threshold_percent: settings.warn_threshold_percent ?? 90,
       };
       await onSave(toSave);
       onClose();
@@ -85,6 +87,48 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
       ...prev,
       protected_processes: prev.protected_processes.filter(n => n !== name),
     }));
+  };
+
+  // ── 설정 내보내기 ────────────────────────────────────────────────────
+  const exportSettings = () => {
+    const data = { ...settings, autostart };
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    a.download = `memory-cleaner-settings-${ts}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ── 설정 가져오기 ────────────────────────────────────────────────────
+  const importSettings = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const imported = JSON.parse(text) as AppSettings;
+        if (!imported.auto_clean || !Array.isArray(imported.protected_processes)) {
+          throw new Error("올바른 설정 파일 형식이 아닙니다.");
+        }
+        setSettings({
+          ...settings,
+          ...imported,
+          auto_clean: { ...settings.auto_clean, ...imported.auto_clean },
+        });
+        if (typeof imported.autostart === "boolean") setAutostart(imported.autostart);
+        alert("설정을 가져왔습니다. 저장 버튼을 눌러 적용하세요.");
+      } catch (e) {
+        alert("가져오기 실패: " + String(e));
+      }
+    };
+    input.click();
   };
 
   // 시간 표시 헬퍼
@@ -159,6 +203,63 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
                 )} />
               </button>
             </label>
+          </section>
+
+          {/* ── 메모리 경고 알림 ──────────────────────────────────── */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+              <span className="w-1.5 h-4 rounded-full bg-red-500 inline-block" />
+              메모리 경고 알림
+              <span className="text-xs font-normal text-slate-400">(자동정리와 독립)</span>
+            </h3>
+
+            <label className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 cursor-pointer">
+              <div className="flex items-center gap-2.5">
+                <Bell className="w-4 h-4 text-slate-400" />
+                <div>
+                  <div className="text-sm font-medium">RAM 임계값 도달 시 OS 알림</div>
+                  <div className="text-xs text-slate-400 mt-0.5">자동정리가 꺼져 있어도 경고만 보냅니다.</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSettings(prev => ({
+                  ...prev,
+                  warn_notifications_enabled: !(prev.warn_notifications_enabled ?? true),
+                }))}
+                className={clsx(
+                  "relative w-11 h-6 rounded-full transition-colors duration-200 overflow-hidden flex-shrink-0",
+                  (settings.warn_notifications_enabled ?? true) ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-600"
+                )}
+              >
+                <span className={clsx(
+                  "absolute top-[4px] w-[16px] h-[16px] bg-white rounded-full shadow transition-all duration-200",
+                  (settings.warn_notifications_enabled ?? true) ? "left-[27px]" : "left-[4px]"
+                )} />
+              </button>
+            </label>
+
+            <div className={clsx(
+              "flex items-center gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 transition-opacity",
+              !(settings.warn_notifications_enabled ?? true) && "opacity-40 pointer-events-none"
+            )}>
+              <div className="flex-1">
+                <div className="text-sm font-medium mb-1">경고 임계값</div>
+                <input
+                  type="range" min="60" max="99" step="1"
+                  value={settings.warn_threshold_percent ?? 90}
+                  onChange={e => setSettings(prev => ({
+                    ...prev,
+                    warn_threshold_percent: Number(e.target.value),
+                  }))}
+                  className="w-full accent-red-500"
+                />
+              </div>
+              <div className="w-14 text-center">
+                <span className="text-lg font-bold text-red-500">{settings.warn_threshold_percent ?? 90}</span>
+                <span className="text-xs text-slate-400">%</span>
+              </div>
+            </div>
           </section>
 
           {/* ── 자동 정리 ─────────────────────────────────────────── */}
@@ -346,7 +447,14 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
         </div>
 
         {/* 푸터 */}
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-slate-200 dark:border-slate-700">
+        <div className="flex items-center gap-2 px-5 py-4 border-t border-slate-200 dark:border-slate-700">
+          <button onClick={importSettings} className="btn btn-ghost text-xs" title="JSON 파일로부터 설정 가져오기">
+            <Upload className="w-3.5 h-3.5" /> 가져오기
+          </button>
+          <button onClick={exportSettings} className="btn btn-ghost text-xs" title="설정을 JSON 파일로 내보내기">
+            <Download className="w-3.5 h-3.5" /> 내보내기
+          </button>
+          <div className="flex-1" />
           <button onClick={onClose} className="btn btn-ghost">취소</button>
           <button onClick={save} disabled={saving} className="btn btn-secondary">
             <Save className="w-3.5 h-3.5" />

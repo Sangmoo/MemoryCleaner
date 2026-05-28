@@ -1,11 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FixedSizeList as List } from "react-window";
 import {
   Ban, ChevronDown, ChevronUp, ChevronsUpDown,
-  Info, Layers, Search, Shield,
+  Info, Layers, Search, Shield, TrendingUp,
 } from "lucide-react";
 import clsx from "clsx";
 import type { ProcessInfo } from "../lib/types";
+
+// ── 메모리 누수 감지 ────────────────────────────────────────────────────────
+// PID별 최근 메모리 측정값 추적 → 지속적 증가 시 누수 의심
+
+const LEAK_HISTORY_SIZE = 12;     // 최근 12개 측정 (10초 간격이면 약 2분)
+const LEAK_MIN_SAMPLES  = 8;      // 최소 8개 있어야 판정
+const LEAK_GROW_RATIO   = 1.25;   // 후반 평균이 전반의 1.25배 이상
+const LEAK_MIN_GROW_MB  = 30;     // 최소 30MB 이상 증가
 
 const ROW_HEIGHT = 36;
 
@@ -25,6 +33,7 @@ interface DisplayRow {
   safe_kill: boolean;
   is_protected: boolean;
   count: number;        // 단일: 1
+  leaking: boolean;     // 메모리 누수 의심
 }
 
 // ── Props ────────────────────────────────────────────────────────────────────
@@ -116,6 +125,16 @@ const Row = ({ index, style, data }: RowProps) => {
       {/* 프로세스명 */}
       <div className="flex-1 min-w-0 flex items-center gap-1.5 group/name">
         <span className="truncate font-medium" title={row.name}>{row.name}</span>
+        {/* 누수 의심 배지 */}
+        {row.leaking && (
+          <span
+            title="메모리 사용량이 지속적으로 증가하는 중 (누수 의심)"
+            className="flex-shrink-0 inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400"
+          >
+            <TrendingUp className="w-2.5 h-2.5" />
+            누수?
+          </span>
+        )}
         {/* 그룹 배지 */}
         {row.count > 1 && (
           <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400">
@@ -201,6 +220,63 @@ export function ProcessTable({ processes, selected, onToggle, onDetail, loading,
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [isGrouped, setIsGrouped] = useState(false);
 
+  // ── 스크롤 위치 유지 ──────────────────────────────────────────────────
+  const scrollOffsetRef = useRef(0);
+  const handleScroll = useCallback(({ scrollOffset }: { scrollOffset: number }) => {
+    scrollOffsetRef.current = scrollOffset;
+  }, []);
+
+  useLayoutEffect(() => {
+    // processes가 갱신될 때 스크롤 위치 복원
+    if (listRef.current && scrollOffsetRef.current > 0) {
+      listRef.current.scrollTo(scrollOffsetRef.current);
+    }
+  }, [processes]);
+
+  // ── 메모리 누수 감지 ──────────────────────────────────────────────────
+  const memHistoryByPid = useRef<Map<number, number[]>>(new Map());
+  const leakingPids = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    const history = memHistoryByPid.current;
+    const currentPids = new Set(processes.map(p => p.pid));
+
+    // 종료된 PID 제거
+    for (const pid of Array.from(history.keys())) {
+      if (!currentPids.has(pid)) {
+        history.delete(pid);
+        leakingPids.current.delete(pid);
+      }
+    }
+
+    // 새 측정값 추가 및 누수 판정
+    const newLeaks = new Set<number>();
+    for (const p of processes) {
+      const arr = history.get(p.pid) ?? [];
+      arr.push(p.mem_bytes);
+      if (arr.length > LEAK_HISTORY_SIZE) arr.shift();
+      history.set(p.pid, arr);
+
+      if (arr.length >= LEAK_MIN_SAMPLES) {
+        const half = Math.floor(arr.length / 2);
+        const firstAvg = arr.slice(0, half).reduce((s, v) => s + v, 0) / half;
+        const lastAvg  = arr.slice(half).reduce((s, v) => s + v, 0) / (arr.length - half);
+        const growBytes = lastAvg - firstAvg;
+        const growMb = growBytes / (1024 * 1024);
+        const monoIncrease = arr.slice(-LEAK_MIN_SAMPLES).every((v, i, a) => i === 0 || v >= a[i - 1] * 0.98);
+
+        if (
+          lastAvg > firstAvg * LEAK_GROW_RATIO &&
+          growMb > LEAK_MIN_GROW_MB &&
+          monoIncrease
+        ) {
+          newLeaks.add(p.pid);
+        }
+      }
+    }
+    leakingPids.current = newLeaks;
+  }, [processes]);
+
   // 리스트 컨테이너 높이 측정
   useEffect(() => {
     const el = listContainerRef.current;
@@ -236,6 +312,8 @@ export function ProcessTable({ processes, selected, onToggle, onDetail, loading,
 
   // ── 그룹화된 표시 목록 ───────────────────────────────────────────────────
   const displayRows = useMemo((): DisplayRow[] => {
+    const leaks = leakingPids.current;
+
     if (!isGrouped) {
       return filtered.map(p => ({
         key:         String(p.pid),
@@ -248,6 +326,7 @@ export function ProcessTable({ processes, selected, onToggle, onDetail, loading,
         safe_kill:   p.safe_kill,
         is_protected: p.is_protected,
         count: 1,
+        leaking: leaks.has(p.pid),
       }));
     }
 
@@ -263,6 +342,7 @@ export function ProcessTable({ processes, selected, onToggle, onDetail, loading,
         g.cpu_percent += p.cpu_percent;
         g.count++;
         if (p.safe_kill) g.safe_kill = true;
+        if (leaks.has(p.pid)) g.leaking = true;
       } else {
         map.set(key, {
           key:          p.name,
@@ -275,6 +355,7 @@ export function ProcessTable({ processes, selected, onToggle, onDetail, loading,
           safe_kill:    p.safe_kill,
           is_protected: p.is_protected,
           count: 1,
+          leaking: leaks.has(p.pid),
         });
       }
     }
@@ -362,6 +443,8 @@ export function ProcessTable({ processes, selected, onToggle, onDetail, loading,
             itemCount={displayRows.length}
             itemSize={ROW_HEIGHT}
             itemData={itemData}
+            itemKey={(idx, data) => data.rows[idx].key}
+            onScroll={handleScroll}
             overscanCount={6}
             className="!overflow-y-auto"
           >

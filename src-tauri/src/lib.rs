@@ -12,16 +12,64 @@ use tauri::{AppHandle, Emitter, Manager};
 
 // ── 자동 정리 백그라운드 루프 ───────────────────────────────────────────────
 
+// ── 트레이 아이콘 동적 생성 (RAM 사용률에 따라 색상 변경) ──────────────────
+
+fn make_status_icon(percent: f64) -> Vec<u8> {
+    let (r, g, b) = if percent < 60.0 {
+        (74u8, 222, 128)   // 초록
+    } else if percent < 80.0 {
+        (250, 204, 21)     // 노랑
+    } else {
+        (239, 68, 68)      // 빨강
+    };
+
+    let size: usize = 32;
+    let mut rgba = vec![0u8; size * size * 4];
+
+    let cx = size as f32 / 2.0 - 0.5;
+    let cy = size as f32 / 2.0 - 0.5;
+    let outer_r = (size as f32 / 2.0) - 1.0;
+    let inner_r = outer_r - 6.0;
+
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 - cx;
+            let dy = y as f32 - cy;
+            let dist = (dx * dx + dy * dy).sqrt();
+            let i = (y * size + x) * 4;
+
+            if dist <= outer_r && dist >= inner_r {
+                // 도넛 링
+                rgba[i]     = r;
+                rgba[i + 1] = g;
+                rgba[i + 2] = b;
+                rgba[i + 3] = 255;
+            } else if dist < inner_r {
+                // 안쪽 채움 (어두운 색)
+                rgba[i]     = 30;
+                rgba[i + 1] = 30;
+                rgba[i + 2] = 40;
+                rgba[i + 3] = 230;
+            }
+            // 바깥은 투명 (0,0,0,0)
+        }
+    }
+
+    rgba
+}
+
 async fn auto_clean_loop(app: AppHandle) {
     let mut ticker = tokio::time::interval(Duration::from_secs(5));
     let mut last_clean = Instant::now();
+    let mut warned_above = false;     // 경고 알림 상태 (히스테리시스)
+    let mut last_icon_band: i8 = -1;  // 0=초록, 1=노랑, 2=빨강
 
     loop {
         ticker.tick().await;
 
         let state: tauri::State<AppState> = app.state::<AppState>();
 
-        // ── 항상: 메모리 읽고 트레이 툴팁 실시간 갱신 ──────────────────────
+        // ── 항상: 메모리 읽고 트레이 툴팁/아이콘 실시간 갱신 ───────────────
         let percent = {
             let Ok(mut sys) = state.system.lock() else { continue };
             sys.refresh_memory();
@@ -30,13 +78,24 @@ async fn auto_clean_loop(app: AppHandle) {
             if t > 0 { (u as f64 / t as f64) * 100.0 } else { 0.0 }
         };
 
+        let band: i8 = if percent < 60.0 { 0 } else if percent < 80.0 { 1 } else { 2 };
+
         if let Some(tray) = app.tray_by_id("main") {
             let tooltip = format!("Memory Cleaner  ·  RAM {:.0}%", percent);
             let _ = tray.set_tooltip(Some(&tooltip));
+
+            // 색상 밴드가 바뀐 경우에만 아이콘 교체 (CPU 절약)
+            if band != last_icon_band {
+                let rgba = make_status_icon(percent);
+                let img = tauri::image::Image::new(&rgba, 32, 32);
+                let _ = tray.set_icon(Some(img));
+                last_icon_band = band;
+            }
         }
 
         // ── 자동 정리: 설정 확인 ────────────────────────────────────────────
-        let (enabled, threshold_pct, interval_secs, protected, excl_start, excl_end) = {
+        let (enabled, threshold_pct, interval_secs, protected, excl_start, excl_end,
+             warn_enabled, warn_threshold) = {
             let Ok(s) = state.settings.lock() else { continue };
             (
                 s.auto_clean.enabled,
@@ -45,8 +104,28 @@ async fn auto_clean_loop(app: AppHandle) {
                 s.protected_processes.clone(),
                 s.auto_clean.exclude_start_hour,
                 s.auto_clean.exclude_end_hour,
+                s.warn_notifications_enabled,
+                s.warn_threshold_percent,
             )
         };
+
+        // ── 메모리 경고 알림 (자동정리와 독립) ──────────────────────────────
+        if warn_enabled {
+            if percent >= warn_threshold {
+                if !warned_above {
+                    use tauri_plugin_notification::NotificationExt;
+                    let _ = app.notification().builder()
+                        .title("Memory Cleaner — ⚠️ 메모리 경고")
+                        .body(&format!("RAM 사용률 {:.1}% — 정리를 권장합니다.", percent))
+                        .show();
+                    let _ = app.emit("memory-warning", percent);
+                    warned_above = true;
+                }
+            } else if percent < warn_threshold - 5.0 {
+                // 5% 히스테리시스로 다시 경고 가능 상태 복귀
+                warned_above = false;
+            }
+        }
 
         if !enabled { continue; }
         if last_clean.elapsed() < Duration::from_secs(interval_secs) { continue; }
@@ -181,6 +260,7 @@ pub fn run() {
             commands::kill_processes,
             commands::empty_working_set,
             commands::cleanup_temp_files,
+            commands::cleanup_disk,
             commands::get_settings,
             commands::save_settings_cmd,
             commands::get_app_autostart,

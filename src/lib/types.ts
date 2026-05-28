@@ -60,6 +60,16 @@ export interface AppSettings {
   theme: string;
   autostart: boolean;
   process_refresh_seconds: number;
+  warn_notifications_enabled: boolean;
+  warn_threshold_percent: number;
+}
+
+export interface CleanupOptions {
+  temp_files: boolean;
+  browser_cache_chrome: boolean;
+  browser_cache_edge: boolean;
+  windows_update_cache: boolean;
+  recycle_bin: boolean;
 }
 
 export interface HistoryEntry {
