@@ -61,7 +61,10 @@ function fmtTime(d: Date) {
 
 export function NotificationCenter({ notifs, open, onToggle, onRead, onClear }: Props) {
   const t = useT();
-  const panelRef = useRef<HTMLDivElement>(null);
+  // bellRef: 벨 버튼 영역, dropdownRef: createPortal로 렌더된 드롭다운 패널
+  // 두 ref 모두 체크해야 패널 내부 클릭이 "외부 클릭"으로 오인되지 않음
+  const bellRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const [filter, setFilter] = useState<FilterType>("all");
   const unread = notifs.filter(n => !n.read).length;
 
@@ -77,10 +80,15 @@ export function NotificationCenter({ notifs, open, onToggle, onRead, onClear }: 
   const filtered = filter === "all" ? notifs : notifs.filter(n => n.type === filter);
 
   // 바깥 클릭 시 닫기
+  // Portal 패널은 document.body에 붙어 있어 bellRef.contains()로는 잡히지 않음
+  // → dropdownRef도 함께 확인해야 패널 안쪽 버튼 클릭이 outside-click으로 오인되지 않음
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const inBell     = bellRef.current?.contains(target);
+      const inDropdown = dropdownRef.current?.contains(target);
+      if (!inBell && !inDropdown) {
         onToggle();
       }
     };
@@ -101,7 +109,7 @@ export function NotificationCenter({ notifs, open, onToggle, onRead, onClear }: 
   ];
 
   return (
-    <div className="relative" ref={panelRef}>
+    <div className="relative" ref={bellRef}>
       {/* 벨 버튼 */}
       <button
         onClick={onToggle}
@@ -122,6 +130,7 @@ export function NotificationCenter({ notifs, open, onToggle, onRead, onClear }: 
       {/* 드롭다운 패널 */}
       {open && createPortal(
         <div
+          ref={dropdownRef}
           className="fixed z-[300] w-80 max-h-[480px] flex flex-col
             bg-white dark:bg-slate-800 rounded-2xl shadow-2xl
             border border-slate-200 dark:border-slate-700 animate-fade-in"
