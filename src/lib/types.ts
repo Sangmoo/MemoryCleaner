@@ -7,6 +7,22 @@ export interface ProcessInfo {
   is_system: boolean;
   safe_kill: boolean;
   is_protected: boolean;
+  parent_pid: number | null;
+}
+
+// ── v1.2.0 신규 ──────────────────────────────────────────────────────────
+
+export interface ProcessRule {
+  process_name: string;
+  threshold_mb: number;
+  action: "kill" | "compress";
+}
+
+export interface KillPreset {
+  id: string;
+  name: string;
+  icon: string;
+  processes: string[];
 }
 
 export interface ProcessDetails {
@@ -76,6 +92,13 @@ export interface AppSettings {
   schedules: CleanSchedule[];
   skip_if_running: string[];
   language: string;
+  // v1.2.0 신규
+  notif_max_count: number;
+  process_rules: ProcessRule[];
+  kill_presets: KillPreset[];
+  accent_color: string;
+  gist_token: string;
+  gist_id: string;
 }
 
 export interface CleanupOptions {

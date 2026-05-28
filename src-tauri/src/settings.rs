@@ -54,6 +54,55 @@ pub struct CleanSchedule {
 
 fn default_true() -> bool { true }
 
+/// 프로세스별 메모리 임계값 규칙 (기능 #4)
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ProcessRule {
+    pub process_name: String,
+    pub threshold_mb: u64,
+    /// "kill" | "compress"
+    pub action: String,
+}
+
+/// 빠른 Kill 프리셋 (기능 #7)
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct KillPreset {
+    pub id: String,
+    pub name: String,
+    pub icon: String,
+    pub processes: Vec<String>,
+}
+
+fn default_kill_presets() -> Vec<KillPreset> {
+    vec![
+        KillPreset {
+            id: "browsers".into(),
+            name: "브라우저 정리".into(),
+            icon: "🌐".into(),
+            processes: vec![
+                "chrome.exe".into(), "msedge.exe".into(),
+                "firefox.exe".into(), "opera.exe".into(),
+            ],
+        },
+        KillPreset {
+            id: "gaming".into(),
+            name: "게임 최적화".into(),
+            icon: "🎮".into(),
+            processes: vec![
+                "discord.exe".into(), "slack.exe".into(),
+                "teams.exe".into(), "zoom.exe".into(),
+            ],
+        },
+        KillPreset {
+            id: "dev".into(),
+            name: "개발 환경".into(),
+            icon: "💻".into(),
+            processes: vec![
+                "code.exe".into(), "devenv.exe".into(), "rider64.exe".into(),
+            ],
+        },
+    ]
+}
+
 fn default_profiles() -> Vec<SettingsProfile> {
     vec![
         SettingsProfile {
@@ -109,6 +158,24 @@ pub struct AppSettings {
     /// 표시 언어 (기능 10)
     #[serde(default = "default_language")]
     pub language: String,
+    /// 알림 센터 최대 보관 개수 (기능 #3)
+    #[serde(default = "default_notif_max")]
+    pub notif_max_count: u32,
+    /// 프로세스별 임계값 규칙 (기능 #4)
+    #[serde(default)]
+    pub process_rules: Vec<ProcessRule>,
+    /// 빠른 Kill 프리셋 (기능 #7)
+    #[serde(default = "default_kill_presets")]
+    pub kill_presets: Vec<KillPreset>,
+    /// 테마 accent 색상 (indigo|violet|emerald|rose|amber|sky) — 기능 #9
+    #[serde(default = "default_accent")]
+    pub accent_color: String,
+    /// GitHub Personal Access Token (Gist 백업용) — 기능 #10
+    #[serde(default)]
+    pub gist_token: String,
+    /// 마지막 업로드한 Gist ID — 기능 #10
+    #[serde(default)]
+    pub gist_id: String,
 }
 
 fn default_process_refresh_secs() -> u64 { 10 }
@@ -116,6 +183,8 @@ fn default_warn_enabled() -> bool { true }
 fn default_warn_threshold() -> f64 { 90.0 }
 fn default_hot_detection() -> bool { true }
 fn default_language() -> String { "ko".to_string() }
+fn default_notif_max() -> u32 { 50 }
+fn default_accent() -> String { "indigo".to_string() }
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -133,6 +202,12 @@ impl Default for AppSettings {
             schedules: Vec::new(),
             skip_if_running: Vec::new(),
             language: "ko".to_string(),
+            notif_max_count: 50,
+            process_rules: Vec::new(),
+            kill_presets: default_kill_presets(),
+            accent_color: "indigo".to_string(),
+            gist_token: String::new(),
+            gist_id: String::new(),
         }
     }
 }

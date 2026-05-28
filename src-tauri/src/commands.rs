@@ -41,6 +41,8 @@ pub struct ProcessInfo {
     pub is_system: bool,
     pub safe_kill: bool,
     pub is_protected: bool,
+    /// 부모 프로세스 PID (기능 #11 트리뷰)
+    pub parent_pid: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -177,6 +179,7 @@ pub fn get_processes(
                 is_system: is_sys,
                 safe_kill,
                 is_protected,
+                parent_pid: p.parent().map(|pp| pp.as_u32()),
             }
         })
         .collect();
@@ -652,6 +655,32 @@ pub fn flush_all_working_sets(state: tauri::State<AppState>) -> Result<EmptySetR
     };
 
     empty_working_set(pids)
+}
+
+// ── RAM 히스토리 파일 저장/로드 (기능 #2) ───────────────────────────────
+
+fn ram_history_path(data_dir: &PathBuf) -> PathBuf {
+    data_dir.join("ram_history.json")
+}
+
+#[tauri::command]
+pub fn save_ram_history(history: Vec<f64>, state: tauri::State<AppState>) -> Result<(), String> {
+    let path = ram_history_path(&state.data_dir);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string(&history).map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn load_ram_history(state: tauri::State<AppState>) -> Result<Vec<f64>, String> {
+    let path = ram_history_path(&state.data_dir);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&content).map_err(|e| e.to_string())
 }
 
 // ── 히스토리 CSV 내보내기 ─────────────────────────────────────────────────

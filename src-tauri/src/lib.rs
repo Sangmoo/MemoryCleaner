@@ -99,7 +99,8 @@ async fn auto_clean_loop(app: AppHandle) {
 
         // ── 자동 정리 + 경고: 설정 확인 ────────────────────────────────────
         let (enabled, threshold_pct, interval_secs, protected, excl_start, excl_end,
-             warn_enabled, warn_threshold, hot_detection, schedules, skip_if_running) = {
+             warn_enabled, warn_threshold, hot_detection, schedules, skip_if_running,
+             process_rules) = {
             let Ok(s) = state.settings.lock() else { continue };
             (
                 s.auto_clean.enabled,
@@ -113,8 +114,52 @@ async fn auto_clean_loop(app: AppHandle) {
                 s.hot_process_detection,
                 s.schedules.clone(),
                 s.skip_if_running.iter().map(|s| s.to_lowercase()).collect::<Vec<_>>(),
+                s.process_rules.clone(),
             )
         };
+
+        // ── 프로세스 규칙 체크 (기능 #4) ───────────────────────────────────
+        if !process_rules.is_empty() {
+            // 규칙에 매칭되는 PID 수집
+            let matches: Vec<(u32, String, String, u64)> = {
+                match state.system.lock() {
+                    Ok(mut sys) => {
+                        sys.refresh_processes(ProcessesToUpdate::All, true);
+                        let mut found: Vec<(u32, String, String, u64)> = Vec::new();
+                        for (pid, p) in sys.processes() {
+                            let name = p.name().to_string_lossy().to_string();
+                            let lname = name.to_lowercase();
+                            let pid_u32 = pid.as_u32();
+                            if commands::is_sys_name(&name) { continue; }
+                            let mem_mb = p.memory() / 1_048_576;
+                            for rule in &process_rules {
+                                if rule.process_name.to_lowercase() == lname && mem_mb >= rule.threshold_mb {
+                                    found.push((pid_u32, name.clone(), rule.action.clone(), mem_mb));
+                                    break;
+                                }
+                            }
+                        }
+                        found
+                    }
+                    Err(_) => Vec::new(),
+                }
+            };
+
+            for (pid, name, action, mem_mb) in matches {
+                if action == "kill" {
+                    if let Ok(_) = commands::do_kill(&*state, vec![pid], "rule") {
+                        let _ = app.emit("rule-triggered", serde_json::json!({
+                            "pid": pid, "name": name, "action": "kill", "mem_mb": mem_mb
+                        }));
+                    }
+                } else if action == "compress" {
+                    let _ = commands::empty_working_set(vec![pid]);
+                    let _ = app.emit("rule-triggered", serde_json::json!({
+                        "pid": pid, "name": name, "action": "compress", "mem_mb": mem_mb
+                    }));
+                }
+            }
+        }
 
         // ── 메모리 경고 알림 (자동정리와 독립) ──────────────────────────────
         if warn_enabled {
@@ -434,6 +479,9 @@ pub fn run() {
             commands::export_history_csv,
             // v1.0 신규
             commands::flush_all_working_sets,
+            // v1.2 신규
+            commands::save_ram_history,
+            commands::load_ram_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

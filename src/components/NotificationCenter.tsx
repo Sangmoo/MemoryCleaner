@@ -21,6 +21,7 @@ interface Props {
   onToggle: () => void;
   onRead: () => void;
   onClear: () => void;
+  maxCount?: number;
 }
 
 const TYPE_CFG: Record<NotifType, {
@@ -59,7 +60,7 @@ function fmtTime(d: Date) {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
 }
 
-export function NotificationCenter({ notifs, open, onToggle, onRead, onClear }: Props) {
+export function NotificationCenter({ notifs, open, onToggle, onRead, onClear, maxCount = 50 }: Props) {
   const t = useT();
   // bellRef: 벨 버튼 영역, dropdownRef: createPortal로 렌더된 드롭다운 패널
   // 두 ref 모두 체크해야 패널 내부 클릭이 "외부 클릭"으로 오인되지 않음
@@ -138,7 +139,10 @@ export function NotificationCenter({ notifs, open, onToggle, onRead, onClear }: 
         >
           {/* 헤더 */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
-            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{t("notifications.title")}</span>
+            <div className="flex items-baseline gap-2">
+              <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{t("notifications.title")}</span>
+              <span className="text-[10px] font-mono text-slate-400 tabular-nums">{notifs.length} / {maxCount}</span>
+            </div>
             <div className="flex items-center gap-1">
               {notifs.length > 0 && (
                 <button

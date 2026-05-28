@@ -1,10 +1,32 @@
 import { useEffect, useRef, useState } from "react";
-import { X, Plus, Save, Monitor, Clock, RefreshCw, Bell, Download, Upload, Cpu, CalendarDays, SkipForward, Globe } from "lucide-react";
+import { X, Plus, Save, Monitor, Clock, RefreshCw, Bell, Download, Upload, Cpu, CalendarDays, SkipForward, Globe, Filter, Zap, Palette, Cloud, CloudUpload, CloudDownload } from "lucide-react";
 import clsx from "clsx";
 import { api, isTauri } from "../lib/api";
 import { toast } from "../lib/toast";
-import type { AppSettings, CleanSchedule, SettingsProfile } from "../lib/types";
+import type { AppSettings, CleanSchedule, SettingsProfile, ProcessRule, KillPreset } from "../lib/types";
 import { useT } from "../lib/i18n";
+
+// 색상 프리셋 (기능 #9)
+export const ACCENT_COLORS: Record<string, { name: string; hsl500: string; hsl600: string; hsl700: string; hsl100: string; hsl400: string; hsl50: string; hsl900: string }> = {
+  indigo:  { name: "Indigo",  hsl50: "238 100% 97%", hsl100: "239 84% 92%", hsl400: "234 89% 65%", hsl500: "239 84% 60%", hsl600: "243 75% 55%", hsl700: "245 58% 48%", hsl900: "244 47% 30%" },
+  violet:  { name: "Violet",  hsl50: "270 100% 97%", hsl100: "269 100% 92%", hsl400: "270 95% 70%", hsl500: "271 91% 65%", hsl600: "271 81% 55%", hsl700: "272 72% 45%", hsl900: "274 66% 30%" },
+  emerald: { name: "Emerald", hsl50: "152 81% 95%", hsl100: "149 80% 88%", hsl400: "158 64% 50%", hsl500: "160 84% 39%", hsl600: "161 94% 30%", hsl700: "163 94% 24%", hsl900: "164 88% 14%" },
+  rose:    { name: "Rose",    hsl50: "356 100% 97%", hsl100: "356 100% 93%", hsl400: "351 95% 65%", hsl500: "350 89% 60%", hsl600: "347 77% 50%", hsl700: "345 83% 40%", hsl900: "344 80% 25%" },
+  amber:   { name: "Amber",   hsl50: "48 100% 96%", hsl100: "48 96% 89%", hsl400: "43 96% 56%", hsl500: "38 92% 50%", hsl600: "32 95% 44%", hsl700: "26 90% 37%", hsl900: "22 78% 26%" },
+  sky:     { name: "Sky",     hsl50: "204 100% 97%", hsl100: "204 94% 91%", hsl400: "198 93% 60%", hsl500: "199 89% 48%", hsl600: "200 98% 39%", hsl700: "201 96% 32%", hsl900: "204 80% 16%" },
+};
+
+export function applyAccentColor(color: string) {
+  const c = ACCENT_COLORS[color] ?? ACCENT_COLORS.indigo;
+  const root = document.documentElement;
+  root.style.setProperty("--color-brand-50",  `hsl(${c.hsl50})`);
+  root.style.setProperty("--color-brand-100", `hsl(${c.hsl100})`);
+  root.style.setProperty("--color-brand-400", `hsl(${c.hsl400})`);
+  root.style.setProperty("--color-brand-500", `hsl(${c.hsl500})`);
+  root.style.setProperty("--color-brand-600", `hsl(${c.hsl600})`);
+  root.style.setProperty("--color-brand-700", `hsl(${c.hsl700})`);
+  root.style.setProperty("--color-brand-900", `hsl(${c.hsl900})`);
+}
 
 interface Props {
   initial: AppSettings;
@@ -25,8 +47,27 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
     if (!clone.schedules) clone.schedules = [];
     if (!clone.skip_if_running) clone.skip_if_running = [];
     if (!clone.language) clone.language = "ko";
+    if (clone.notif_max_count == null) clone.notif_max_count = 50;
+    if (!clone.process_rules) clone.process_rules = [];
+    if (!clone.kill_presets) clone.kill_presets = [];
+    if (!clone.accent_color) clone.accent_color = "indigo";
+    if (clone.gist_token == null) clone.gist_token = "";
+    if (clone.gist_id == null) clone.gist_id = "";
     return clone;
   });
+
+  // 프로세스 규칙 폼 (기능 #4)
+  const [newRuleName, setNewRuleName] = useState("");
+  const [newRuleMb, setNewRuleMb] = useState<number>(500);
+  const [newRuleAction, setNewRuleAction] = useState<"kill" | "compress">("kill");
+
+  // 프리셋 폼 (기능 #7)
+  const [newPresetName, setNewPresetName] = useState("");
+  const [newPresetIcon, setNewPresetIcon] = useState("⚡");
+  const [newPresetProcs, setNewPresetProcs] = useState("");
+
+  // Gist 백업 상태 (기능 #10)
+  const [gistBusy, setGistBusy] = useState(false);
   const [autostart, setAutostart] = useState(false);
   const [autostartLoading, setAutostartLoading] = useState(false);
   const [newProtected, setNewProtected] = useState("");
@@ -67,7 +108,15 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
         schedules: settings.schedules ?? [],
         skip_if_running: settings.skip_if_running ?? [],
         language: settings.language ?? "ko",
+        notif_max_count: settings.notif_max_count ?? 50,
+        process_rules: settings.process_rules ?? [],
+        kill_presets: settings.kill_presets ?? [],
+        accent_color: settings.accent_color ?? "indigo",
+        gist_token: settings.gist_token ?? "",
+        gist_id: settings.gist_id ?? "",
       };
+      // accent 색상 즉시 적용
+      applyAccentColor(toSave.accent_color);
       // 언어 로컬 저장
       localStorage.setItem("memtool-language", toSave.language);
       await onSave(toSave);
@@ -129,6 +178,123 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
       ...prev,
       skip_if_running: (prev.skip_if_running ?? []).filter(n => n !== name),
     }));
+  };
+
+  // ── 프로세스 규칙 (기능 #4) ──────────────────────────────────────
+  const addRule = () => {
+    const name = newRuleName.trim();
+    if (!name || newRuleMb <= 0) return;
+    const rule: ProcessRule = {
+      process_name: name.toLowerCase(),
+      threshold_mb: newRuleMb,
+      action: newRuleAction,
+    };
+    setSettings(prev => ({
+      ...prev,
+      process_rules: [...(prev.process_rules ?? []), rule],
+    }));
+    setNewRuleName("");
+  };
+  const removeRule = (idx: number) => {
+    setSettings(prev => ({
+      ...prev,
+      process_rules: (prev.process_rules ?? []).filter((_, i) => i !== idx),
+    }));
+  };
+
+  // ── Kill 프리셋 (기능 #7) ──────────────────────────────────────
+  const addPreset = () => {
+    const name = newPresetName.trim();
+    const procs = newPresetProcs.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+    if (!name || procs.length === 0) return;
+    const preset: KillPreset = {
+      id: `preset-${Date.now()}`,
+      name,
+      icon: newPresetIcon.trim() || "⚡",
+      processes: procs,
+    };
+    setSettings(prev => ({
+      ...prev,
+      kill_presets: [...(prev.kill_presets ?? []), preset],
+    }));
+    setNewPresetName("");
+    setNewPresetIcon("⚡");
+    setNewPresetProcs("");
+  };
+  const removePreset = (id: string) => {
+    setSettings(prev => ({
+      ...prev,
+      kill_presets: (prev.kill_presets ?? []).filter(p => p.id !== id),
+    }));
+  };
+
+  // ── Gist 백업 (기능 #10) ──────────────────────────────────────
+  const uploadGist = async () => {
+    if (!settings.gist_token) {
+      toast.error("GitHub Token이 필요합니다", "Gist 업로드");
+      return;
+    }
+    setGistBusy(true);
+    try {
+      const json = JSON.stringify(settings, null, 2);
+      const body = {
+        description: "Memory Cleaner settings backup",
+        public: false,
+        files: { "memory-cleaner-settings.json": { content: json } },
+      };
+      const url = settings.gist_id
+        ? `https://api.github.com/gists/${settings.gist_id}`
+        : "https://api.github.com/gists";
+      const method = settings.gist_id ? "PATCH" : "POST";
+      const r = await fetch(url, {
+        method,
+        headers: {
+          "Authorization": `token ${settings.gist_token}`,
+          "Accept": "application/vnd.github+json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      const data = await r.json();
+      setSettings(prev => ({ ...prev, gist_id: data.id }));
+      toast.success(`Gist ID: ${data.id}`, "Gist 업로드 완료");
+    } catch (e) {
+      toast.error(String(e), "Gist 업로드 실패");
+    } finally {
+      setGistBusy(false);
+    }
+  };
+  const downloadGist = async () => {
+    if (!settings.gist_token || !settings.gist_id) {
+      toast.error("Token과 Gist ID가 필요합니다", "Gist 복원");
+      return;
+    }
+    setGistBusy(true);
+    try {
+      const r = await fetch(`https://api.github.com/gists/${settings.gist_id}`, {
+        headers: {
+          "Authorization": `token ${settings.gist_token}`,
+          "Accept": "application/vnd.github+json",
+        },
+      });
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      const data = await r.json();
+      const file = data.files?.["memory-cleaner-settings.json"];
+      if (!file?.content) throw new Error("memory-cleaner-settings.json 파일을 찾을 수 없습니다");
+      const imported = JSON.parse(file.content) as AppSettings;
+      setSettings({
+        ...settings,
+        ...imported,
+        gist_token: settings.gist_token,
+        gist_id: settings.gist_id,
+      });
+      toast.success("저장 버튼을 눌러 적용하세요", "Gist 복원 완료");
+    } catch (e) {
+      toast.error(String(e), "Gist 복원 실패");
+    } finally {
+      setGistBusy(false);
+    }
   };
 
   // ── 스케줄 관리 ─────────────────────────────────────────────────────
@@ -749,6 +915,225 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
                   </span>
                 ))
               )}
+            </div>
+          </section>
+
+          {/* ── 알림 센터 최대 개수 (기능 #3) ──────────────────────── */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+              <span className="w-1.5 h-4 rounded-full bg-pink-500 inline-block" />
+              <Filter className="w-4 h-4 text-pink-500" />
+              {t("settings.notifMax")}
+            </h3>
+            <p className="text-xs text-slate-400">{t("settings.notifMaxDesc")}</p>
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60">
+              <input
+                type="range" min="10" max="200" step="10"
+                value={settings.notif_max_count ?? 50}
+                onChange={e => setSettings(prev => ({ ...prev, notif_max_count: Number(e.target.value) }))}
+                className="flex-1 accent-pink-500"
+              />
+              <div className="w-14 text-center">
+                <span className="text-lg font-bold text-pink-500">{settings.notif_max_count ?? 50}</span>
+                <span className="text-xs text-slate-400">개</span>
+              </div>
+            </div>
+          </section>
+
+          {/* ── 프로세스 규칙 (기능 #4) ──────────────────────────── */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+              <span className="w-1.5 h-4 rounded-full bg-red-500 inline-block" />
+              {t("settings.processRules")}
+            </h3>
+            <p className="text-xs text-slate-400">{t("settings.processRulesDesc")}</p>
+            <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60">
+              <input
+                type="text"
+                placeholder={t("settings.ruleProcessName")}
+                value={newRuleName}
+                onChange={e => setNewRuleName(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && addRule()}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm"
+              />
+              <input
+                type="number" min="50" step="50"
+                value={newRuleMb}
+                onChange={e => setNewRuleMb(Number(e.target.value))}
+                className="w-24 px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-right"
+              />
+              <select
+                value={newRuleAction}
+                onChange={e => setNewRuleAction(e.target.value as "kill" | "compress")}
+                className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm"
+              >
+                <option value="kill">{t("settings.ruleKill")}</option>
+                <option value="compress">{t("settings.ruleCompress")}</option>
+              </select>
+              <button onClick={addRule} className="btn btn-secondary text-xs">
+                <Plus className="w-3.5 h-3.5" /> {t("settings.addRule")}
+              </button>
+            </div>
+            <div className="space-y-1.5">
+              {(settings.process_rules ?? []).length === 0 ? (
+                <span className="text-xs text-slate-400">{t("settings.noRules")}</span>
+              ) : (
+                (settings.process_rules ?? []).map((rule, idx) => (
+                  <div key={idx} className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                    <span className="font-mono text-sm flex-1 truncate">{rule.process_name}</span>
+                    <span className="text-xs font-mono text-slate-500">≥ {rule.threshold_mb} MB</span>
+                    <span className={clsx(
+                      "text-[10px] px-2 py-0.5 rounded-full font-semibold",
+                      rule.action === "kill"
+                        ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+                        : "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                    )}>
+                      {rule.action === "kill" ? t("settings.ruleKill") : t("settings.ruleCompress")}
+                    </span>
+                    <button onClick={() => removeRule(idx)} className="text-slate-400 hover:text-red-500">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          {/* ── Kill 프리셋 (기능 #7) ─────────────────────────── */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+              <span className="w-1.5 h-4 rounded-full bg-yellow-500 inline-block" />
+              <Zap className="w-4 h-4 text-yellow-500" />
+              {t("settings.killPresets")}
+            </h3>
+            <p className="text-xs text-slate-400">{t("settings.killPresetsDesc")}</p>
+            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 space-y-2">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder={t("settings.presetIcon")}
+                  value={newPresetIcon}
+                  onChange={e => setNewPresetIcon(e.target.value)}
+                  className="w-16 px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-center"
+                />
+                <input
+                  type="text"
+                  placeholder={t("settings.presetName")}
+                  value={newPresetName}
+                  onChange={e => setNewPresetName(e.target.value)}
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm"
+                />
+                <button onClick={addPreset} className="btn btn-secondary text-xs">
+                  <Plus className="w-3.5 h-3.5" /> {t("settings.addPreset")}
+                </button>
+              </div>
+              <input
+                type="text"
+                placeholder={t("settings.presetProcesses")}
+                value={newPresetProcs}
+                onChange={e => setNewPresetProcs(e.target.value)}
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              {(settings.kill_presets ?? []).length === 0 ? (
+                <span className="text-xs text-slate-400">{t("settings.noPresets")}</span>
+              ) : (
+                (settings.kill_presets ?? []).map(preset => (
+                  <div key={preset.id} className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                    <span className="text-base">{preset.icon}</span>
+                    <span className="text-sm font-medium flex-1 truncate">{preset.name}</span>
+                    <span className="text-[10px] text-slate-400 font-mono truncate max-w-[180px]" title={preset.processes.join(", ")}>
+                      {preset.processes.join(", ")}
+                    </span>
+                    <button onClick={() => removePreset(preset.id)} className="text-slate-400 hover:text-red-500">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          {/* ── Accent 색상 (기능 #9) ───────────────────────── */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+              <span className="w-1.5 h-4 rounded-full bg-indigo-500 inline-block" />
+              <Palette className="w-4 h-4 text-indigo-500" />
+              {t("settings.accentColor")}
+            </h3>
+            <p className="text-xs text-slate-400">{t("settings.accentColorDesc")}</p>
+            <div className="flex gap-2 flex-wrap">
+              {Object.entries(ACCENT_COLORS).map(([key, c]) => {
+                const selected = (settings.accent_color ?? "indigo") === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      setSettings(prev => ({ ...prev, accent_color: key }));
+                      applyAccentColor(key);
+                    }}
+                    className={clsx(
+                      "flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all",
+                      selected
+                        ? "border-slate-700 dark:border-white shadow-md"
+                        : "border-transparent hover:border-slate-300 dark:hover:border-slate-600"
+                    )}
+                  >
+                    <span
+                      className="w-8 h-8 rounded-full shadow-sm"
+                      style={{ background: `hsl(${c.hsl500})` }}
+                    />
+                    <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300">{c.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* ── 클라우드 백업 (기능 #10) ─────────────────────── */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+              <span className="w-1.5 h-4 rounded-full bg-sky-500 inline-block" />
+              <Cloud className="w-4 h-4 text-sky-500" />
+              {t("settings.cloudBackup")}
+            </h3>
+            <p className="text-xs text-slate-400">{t("settings.cloudBackupDesc")}</p>
+
+            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 space-y-2">
+              <label className="block">
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-300">{t("settings.gistToken")}</span>
+                <input
+                  type="password"
+                  placeholder={t("settings.gistTokenPlaceholder")}
+                  value={settings.gist_token ?? ""}
+                  onChange={e => setSettings(prev => ({ ...prev, gist_token: e.target.value }))}
+                  className="mt-1 w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-mono"
+                />
+              </label>
+              {settings.gist_id && (
+                <div className="text-xs text-slate-500">
+                  <span className="font-medium">{t("settings.gistId")}:</span>{" "}
+                  <span className="font-mono">{settings.gist_id}</span>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={uploadGist}
+                  disabled={gistBusy || !settings.gist_token}
+                  className="btn btn-secondary text-xs flex-1 disabled:opacity-40"
+                >
+                  <CloudUpload className="w-3.5 h-3.5" /> {t("settings.gistUpload")}
+                </button>
+                <button
+                  onClick={downloadGist}
+                  disabled={gistBusy || !settings.gist_token || !settings.gist_id}
+                  className="btn btn-secondary text-xs flex-1 disabled:opacity-40"
+                >
+                  <CloudDownload className="w-3.5 h-3.5" /> {t("settings.gistDownload")}
+                </button>
+              </div>
             </div>
           </section>
         </div>

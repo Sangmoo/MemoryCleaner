@@ -4,9 +4,10 @@ import { FixedSizeList as List } from "react-window";
 import {
   Ban, ChevronDown, ChevronUp, ChevronsUpDown,
   Info, Layers, Search, Shield, TrendingUp, ShieldPlus, GaugeCircle,
+  GitBranch, Zap,
 } from "lucide-react";
 import clsx from "clsx";
-import type { ProcessInfo } from "../lib/types";
+import type { ProcessInfo, KillPreset } from "../lib/types";
 import { api } from "../lib/api";
 import { toast } from "../lib/toast";
 
@@ -37,6 +38,10 @@ interface DisplayRow {
   is_protected: boolean;
   count: number;        // 단일: 1
   leaking: boolean;     // 메모리 누수 의심
+  // 트리뷰 (기능 #11)
+  depth?: number;       // 들여쓰기 깊이 (0 = root)
+  hasChildren?: boolean;
+  expanded?: boolean;
 }
 
 // ── 컨텍스트 메뉴 ────────────────────────────────────────────────────────────
@@ -132,6 +137,36 @@ function ContextMenu({
   );
 }
 
+// ── 스파크라인 (기능 #8) ────────────────────────────────────────────────
+
+function Sparkline({ data }: { data: number[] }) {
+  if (!data || data.length < 2) return null;
+  const w = 24;
+  const h = 14;
+  const max = Math.max(...data, 1);
+  const points = data
+    .map((v, i) => {
+      const x = (i / (data.length - 1)) * w;
+      const y = h - (v / max) * h;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const last = data[data.length - 1];
+  const color = last < 30 ? "#10b981" : last < 70 ? "#f59e0b" : "#ef4444";
+  return (
+    <svg width={w} height={h} className="inline-block ml-1 align-middle" aria-hidden>
+      <polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 // ── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -142,6 +177,9 @@ interface Props {
   onProtect?: (name: string) => void;
   loading?: boolean;
   error?: string | null;
+  cpuHistory?: Map<number, number[]>;
+  killPresets?: KillPreset[];
+  onSelectPids?: (pids: number[]) => void;
 }
 
 // ── 행 컴포넌트 ───────────────────────────────────────────────────────────────
@@ -155,6 +193,8 @@ interface RowProps {
     onToggle: (pids: number[]) => void;
     onDetail?: (pid: number, name: string) => void;
     onContextMenu?: (x: number, y: number, row: DisplayRow) => void;
+    cpuHistory?: Map<number, number[]>;
+    onToggleExpand?: (key: string) => void;
   };
 }
 
@@ -228,7 +268,19 @@ const Row = ({ index, style, data }: RowProps) => {
       </div>
 
       {/* 프로세스명 */}
-      <div className="flex-1 min-w-0 flex items-center gap-1.5 group/name">
+      <div className="flex-1 min-w-0 flex items-center gap-1.5 group/name" style={{ paddingLeft: (row.depth ?? 0) * 16 }}>
+        {row.hasChildren ? (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); data.onToggleExpand?.(row.key); }}
+            className="flex-shrink-0 text-slate-400 hover:text-brand-500"
+            title={row.expanded ? "접기" : "펼치기"}
+          >
+            {row.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3 rotate-90" />}
+          </button>
+        ) : (row.depth ?? 0) > 0 ? (
+          <span className="flex-shrink-0 w-3 inline-block" />
+        ) : null}
         <span className="truncate font-medium" title={row.name}>{row.name}</span>
         {/* 누수 의심 배지 */}
         {row.leaking && (
@@ -263,9 +315,12 @@ const Row = ({ index, style, data }: RowProps) => {
         {row.count === 1 ? row.pids[0] : "—"}
       </div>
 
-      {/* CPU */}
-      <div className="w-16 text-right font-mono text-xs tabular-nums">
-        {row.cpu_percent > 0 ? `${row.cpu_percent.toFixed(1)}%` : "—"}
+      {/* CPU + 스파크라인 (기능 #8) */}
+      <div className="w-24 text-right font-mono text-xs tabular-nums flex items-center justify-end gap-0.5">
+        <span>{row.cpu_percent > 0 ? `${row.cpu_percent.toFixed(1)}%` : "—"}</span>
+        {row.count === 1 && data.cpuHistory && (
+          <Sparkline data={data.cpuHistory.get(row.pids[0]) ?? []} />
+        )}
       </div>
 
       {/* 메모리 */}
@@ -316,7 +371,10 @@ function SortHeader({
 
 // ── ProcessTable ──────────────────────────────────────────────────────────────
 
-export function ProcessTable({ processes, selected, onToggle, onDetail, onProtect, loading, error }: Props) {
+export function ProcessTable({
+  processes, selected, onToggle, onDetail, onProtect, loading, error,
+  cpuHistory, killPresets, onSelectPids,
+}: Props) {
   const listRef = useRef<List>(null);
   const listContainerRef = useRef<HTMLDivElement>(null);
   const [listHeight, setListHeight] = useState(400);
@@ -324,7 +382,22 @@ export function ProcessTable({ processes, selected, onToggle, onDetail, onProtec
   const [sortKey, setSortKey] = useState<SortKey>("mem_bytes");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [isGrouped, setIsGrouped] = useState(false);
+  const [isTree, setIsTree] = useState(false);
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+  const [showPresets, setShowPresets] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  // 트리와 그룹화는 동시에 불가
+  const enableGroup = () => { setIsGrouped(v => !v); if (!isGrouped) setIsTree(false); };
+  const enableTree = () => { setIsTree(v => !v); if (!isTree) setIsGrouped(false); };
+
+  const toggleExpand = useCallback((key: string) => {
+    setExpandedKeys(prev => {
+      const n = new Set(prev);
+      if (n.has(key)) n.delete(key); else n.add(key);
+      return n;
+    });
+  }, []);
 
   // ── 스크롤 위치 유지 ──────────────────────────────────────────────────
   const scrollOffsetRef = useRef(0);
@@ -420,6 +493,69 @@ export function ProcessTable({ processes, selected, onToggle, onDetail, onProtec
   const displayRows = useMemo((): DisplayRow[] => {
     const leaks = leakingPids.current;
 
+    // ── 트리 뷰 (기능 #11) ──────────────────────────────────────────────
+    if (isTree) {
+      // 부모-자식 인덱스 구축 (전체 processes 기준)
+      const byPid = new Map<number, ProcessInfo>();
+      for (const p of processes) byPid.set(p.pid, p);
+      const childrenByParent = new Map<number, ProcessInfo[]>();
+      for (const p of processes) {
+        if (p.parent_pid != null && byPid.has(p.parent_pid)) {
+          if (!childrenByParent.has(p.parent_pid)) childrenByParent.set(p.parent_pid, []);
+          childrenByParent.get(p.parent_pid)!.push(p);
+        }
+      }
+      // root: parent_pid가 없거나 부모가 목록에 없는 프로세스
+      const rootSet = new Set<number>();
+      for (const p of filtered) {
+        if (p.parent_pid == null || !byPid.has(p.parent_pid)) {
+          rootSet.add(p.pid);
+        } else {
+          // 검색 결과 → 매칭된 자식의 부모도 root에 포함
+          if (search) {
+            let cur: ProcessInfo | undefined = p;
+            while (cur && cur.parent_pid != null && byPid.has(cur.parent_pid)) {
+              cur = byPid.get(cur.parent_pid);
+            }
+            if (cur) rootSet.add(cur.pid);
+          }
+        }
+      }
+
+      const roots = Array.from(rootSet)
+        .map(pid => byPid.get(pid)!)
+        .filter(Boolean)
+        .sort((a, b) => {
+          let cmp = 0;
+          if      (sortKey === "name")        cmp = a.name.localeCompare(b.name);
+          else if (sortKey === "pid")         cmp = a.pid - b.pid;
+          else if (sortKey === "mem_bytes")   cmp = a.mem_bytes - b.mem_bytes;
+          else if (sortKey === "cpu_percent") cmp = a.cpu_percent - b.cpu_percent;
+          return sortDir === "asc" ? cmp : -cmp;
+        });
+
+      const rows: DisplayRow[] = [];
+      const pushRow = (p: ProcessInfo, depth: number) => {
+        const children = childrenByParent.get(p.pid) ?? [];
+        const key = String(p.pid);
+        const expanded = expandedKeys.has(key);
+        rows.push({
+          key, name: p.name, pids: [p.pid],
+          mem_mb: p.mem_mb, mem_bytes: p.mem_bytes,
+          cpu_percent: p.cpu_percent,
+          is_system: p.is_system, safe_kill: p.safe_kill, is_protected: p.is_protected,
+          count: 1, leaking: leaks.has(p.pid),
+          depth, hasChildren: children.length > 0, expanded,
+        });
+        if (expanded && depth < 1) {
+          // 최대 2단계 (depth 0과 1)
+          for (const c of children) pushRow(c, depth + 1);
+        }
+      };
+      for (const r of roots) pushRow(r, 0);
+      return rows;
+    }
+
     if (!isGrouped) {
       return filtered.map(p => ({
         key:         String(p.pid),
@@ -474,16 +610,35 @@ export function ProcessTable({ processes, selected, onToggle, onDetail, onProtec
       else                                cmp = a.mem_bytes - b.mem_bytes;
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [filtered, isGrouped, sortKey, sortDir]);
+  }, [filtered, isGrouped, sortKey, sortDir, isTree, expandedKeys, processes, search]);
 
   const handleContextMenu = useCallback((x: number, y: number, row: DisplayRow) => {
     setContextMenu({ x, y, row });
   }, []);
 
   const itemData = useMemo(
-    () => ({ rows: displayRows, selected, onToggle, onDetail, onContextMenu: handleContextMenu }),
-    [displayRows, selected, onToggle, onDetail, handleContextMenu]
+    () => ({
+      rows: displayRows, selected, onToggle, onDetail,
+      onContextMenu: handleContextMenu,
+      cpuHistory, onToggleExpand: toggleExpand,
+    }),
+    [displayRows, selected, onToggle, onDetail, handleContextMenu, cpuHistory, toggleExpand]
   );
+
+  // ── 프리셋 적용 (기능 #7) ────────────────────────────────────────────
+  const applyPreset = (preset: KillPreset) => {
+    setShowPresets(false);
+    const lowerNames = preset.processes.map(n => n.toLowerCase());
+    const matchPids = processes
+      .filter(p => lowerNames.includes(p.name.toLowerCase()) && !p.is_system && !p.is_protected)
+      .map(p => p.pid);
+    if (matchPids.length === 0) {
+      toast.info(`매칭되는 프로세스 없음`, preset.name);
+      return;
+    }
+    onSelectPids?.(matchPids);
+    toast.success(`${matchPids.length}개 프로세스 선택됨`, `${preset.icon} ${preset.name}`);
+  };
 
   return (
     <div className="card overflow-hidden flex flex-col h-full">
@@ -508,10 +663,11 @@ export function ProcessTable({ processes, selected, onToggle, onDetail, onProtec
 
         {/* 그룹화 토글 */}
         <button
-          onClick={() => setIsGrouped(v => !v)}
+          onClick={enableGroup}
           title={isGrouped ? "그룹화 해제" : "같은 이름 프로세스 그룹화"}
+          disabled={isTree}
           className={clsx(
-            "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+            "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
             isGrouped
               ? "bg-brand-600 border-brand-600 text-white"
               : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-500 hover:text-brand-600"
@@ -520,6 +676,55 @@ export function ProcessTable({ processes, selected, onToggle, onDetail, onProtec
           <Layers className="w-3.5 h-3.5" />
           그룹화
         </button>
+
+        {/* 트리 토글 (기능 #11) */}
+        <button
+          onClick={enableTree}
+          title={isTree ? "트리 해제" : "부모-자식 트리 보기"}
+          disabled={isGrouped}
+          className={clsx(
+            "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
+            isTree
+              ? "bg-brand-600 border-brand-600 text-white"
+              : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-500 hover:text-brand-600"
+          )}
+        >
+          <GitBranch className="w-3.5 h-3.5" />
+          트리
+        </button>
+
+        {/* 프리셋 드롭다운 (기능 #7) */}
+        {killPresets && killPresets.length > 0 && (
+          <div className="relative">
+            <button
+              onClick={() => setShowPresets(v => !v)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-500 hover:text-brand-600 transition-colors"
+              title="빠른 Kill 프리셋"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              프리셋
+              <ChevronDown className="w-3 h-3 opacity-70" />
+            </button>
+            {showPresets && (
+              <>
+                <div className="fixed inset-0 z-[40]" onClick={() => setShowPresets(false)} />
+                <div className="absolute right-0 top-full mt-1 z-[50] min-w-[200px] bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 py-1 animate-fade-in">
+                  {killPresets.map(preset => (
+                    <button
+                      key={preset.id}
+                      onClick={() => applyPreset(preset)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-left"
+                    >
+                      <span className="text-base">{preset.icon}</span>
+                      <span className="flex-1">{preset.name}</span>
+                      <span className="text-[10px] text-slate-400">{preset.processes.length}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 컬럼 헤더 */}
@@ -527,7 +732,7 @@ export function ProcessTable({ processes, selected, onToggle, onDetail, onProtec
         <div className="w-9 text-center">✓</div>
         <SortHeader label="프로세스명" sortKey="name"        current={sortKey} dir={sortDir} onSort={handleSort} className="flex-1" />
         <SortHeader label="PID"        sortKey="pid"         current={sortKey} dir={sortDir} onSort={handleSort} className="w-16 justify-end" />
-        <SortHeader label="CPU"        sortKey="cpu_percent" current={sortKey} dir={sortDir} onSort={handleSort} className="w-16 justify-end" />
+        <SortHeader label="CPU"        sortKey="cpu_percent" current={sortKey} dir={sortDir} onSort={handleSort} className="w-24 justify-end" />
         <SortHeader label="메모리"      sortKey="mem_bytes"   current={sortKey} dir={sortDir} onSort={handleSort} className="w-24 justify-end" />
         <div className="w-20 text-center">분류</div>
       </div>

@@ -3,7 +3,7 @@ import {
   Zap, Moon, Sun, RefreshCw, CheckSquare, Sparkles, Square,
   Skull, Loader2, Settings, History, PlayCircle, Wind,
   AlertTriangle, HardDrive, Keyboard, BarChart2, Cpu, Flame,
-  Info,
+  Info, Minimize2, Maximize2,
 } from "lucide-react";
 import clsx from "clsx";
 import { listen } from "@tauri-apps/api/event";
@@ -20,7 +20,7 @@ import { ProcessTable } from "./components/ProcessTable";
 import { ThresholdStepper } from "./components/ThresholdStepper";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ResultDialog } from "./components/ResultDialog";
-import { SettingsModal } from "./components/SettingsModal";
+import { SettingsModal, applyAccentColor } from "./components/SettingsModal";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { StartupPanel } from "./components/StartupPanel";
 import { ProcessDetailModal } from "./components/ProcessDetailModal";
@@ -78,7 +78,15 @@ const DEFAULT_SETTINGS: AppSettings = {
   schedules: [],
   skip_if_running: [],
   language: "ko",
+  notif_max_count: 50,
+  process_rules: [],
+  kill_presets: [],
+  accent_color: "indigo",
+  gist_token: "",
+  gist_id: "",
 };
+
+const CPU_HISTORY_MAX = 15;
 
 // ── 내부 앱 컴포넌트 (i18n context 안에서 실행) ───────────────────────────
 function AppInner() {
@@ -104,22 +112,35 @@ function AppInner() {
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const notifCounter = useRef(0);
+  const notifMaxRef = useRef(50);
 
   const addNotif = useCallback((type: NotifType, title: string, message: string) => {
     const id = String(++notifCounter.current);
-    setNotifs(prev => [...prev.slice(-49), { id, type, title, message, time: new Date(), read: false }]);
+    const max = Math.max(1, notifMaxRef.current);
+    setNotifs(prev => {
+      const next = [...prev, { id, type, title, message, time: new Date(), read: false }];
+      return next.length > max ? next.slice(-max) : next;
+    });
   }, []);
 
   // ── 설정 ──────────────────────────────────────────────────────────────
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [dark, setDark] = useDarkMode(settings.theme);
   const [showSettings, setShowSettings] = useState(false);
+  const [miniMode, setMiniMode] = useState(false);
+
+  // 설정 변경 시 notifMax와 accent 동기화
+  useEffect(() => {
+    notifMaxRef.current = settings.notif_max_count ?? 50;
+    applyAccentColor(settings.accent_color ?? "indigo");
+  }, [settings.notif_max_count, settings.accent_color]);
 
   // 초기 설정 로드
   useEffect(() => {
     if (!isTauri) return;
     api.getSettings().then(s => {
       setSettings(s);
+      applyAccentColor(s.accent_color ?? "indigo");
     }).catch(console.error);
   }, []);
 
@@ -137,9 +158,17 @@ function AppInner() {
   const [snap, setSnap] = useState<MemorySnapshot | null>(null);
   const [memHistory, setMemHistory] = useState<number[]>([]);
 
-  // ── RAM 히스토리 (분 단위, 최대 24시간) — 기능 7 ──────────────────────
+  // ── RAM 히스토리 (분 단위, 최대 24시간) — 기능 7 + 파일 저장 (기능 #2) ──
   const [ramHistoryMinute, setRamHistoryMinute] = useState<number[]>([]);
   const lastMinuteRef = useRef<number>(-1);
+
+  // 초기 로드: 파일에서 ramHistory 불러오기
+  useEffect(() => {
+    if (!isTauri) return;
+    api.loadRamHistory()
+      .then(arr => { if (arr.length > 0) setRamHistoryMinute(arr); })
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -153,13 +182,17 @@ function AppInner() {
             return next.length > GRAPH_MAX_POINTS ? next.slice(-GRAPH_MAX_POINTS) : next;
           });
 
-          // 분이 바뀔 때마다 ramHistoryMinute에 추가
+          // 분이 바뀔 때마다 ramHistoryMinute에 추가 + 파일 저장
           const nowMin = new Date().getMinutes();
           if (nowMin !== lastMinuteRef.current) {
             lastMinuteRef.current = nowMin;
             setRamHistoryMinute(prev => {
               const next = [...prev, Math.round(m.percent)];
-              return next.length > RAM_HISTORY_MAX ? next.slice(-RAM_HISTORY_MAX) : next;
+              const truncated = next.length > RAM_HISTORY_MAX ? next.slice(-RAM_HISTORY_MAX) : next;
+              if (isTauri) {
+                api.saveRamHistory(truncated).catch(console.error);
+              }
+              return truncated;
             });
           }
         }
@@ -169,6 +202,37 @@ function AppInner() {
     const id = setInterval(tick, MEM_REFRESH_MS);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
+
+  // ── 주간 리포트 (기능 #6) ────────────────────────────────────────────
+  useEffect(() => {
+    if (!isTauri) return;
+    const KEY = "mc-last-weekly-report";
+    const last = localStorage.getItem(KEY);
+    const now = new Date();
+    const nowMs = now.getTime();
+    const lastMs = last ? new Date(last).getTime() : 0;
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    if (lastMs > 0 && nowMs - lastMs < sevenDaysMs) return;
+
+    // history 데이터로 지난 7일 통계 계산
+    api.getHistory().then(history => {
+      if (!history || history.length === 0) return; // 최초 실행 시 표시 안 함
+      const cutoff = nowMs - sevenDaysMs;
+      const recent = history.filter(h => {
+        const t = new Date(h.timestamp).getTime();
+        return t >= cutoff && h.success;
+      });
+      if (recent.length === 0) {
+        localStorage.setItem(KEY, now.toISOString());
+        return;
+      }
+      const totalMb = recent.reduce((s, h) => s + (h.mem_freed_mb ?? 0), 0);
+      const totalGb = (totalMb / 1024).toFixed(2);
+      toast.info(`📊 ${t("report.weeklyBody", recent.length, totalGb)}`, t("report.weekly"));
+      addNotif("info" as NotifType, t("report.weekly"), t("report.weeklyBody", recent.length, totalGb));
+      localStorage.setItem(KEY, now.toISOString());
+    }).catch(console.error);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 시스템 통계 (CPU + 디스크) ──────────────────────────────────────
   const [sysStats, setSysStats] = useState<SystemStats | null>(null);
@@ -278,6 +342,10 @@ function AppInner() {
   // ── 프로세스 상세 ──────────────────────────────────────────────────────
   const [detailPid, setDetailPid] = useState<{ pid: number; name: string } | null>(null);
 
+  // ── CPU 히스토리 (기능 #8 스파크라인) ────────────────────────────────
+  const cpuHistoryByPid = useRef<Map<number, number[]>>(new Map());
+  const [cpuHistoryVersion, setCpuHistoryVersion] = useState(0);
+
   const refreshProcesses = useCallback(async (th: number) => {
     setLoading(true);
     setLoadError(null);
@@ -286,12 +354,32 @@ function AppInner() {
       const list = await api.getProcesses(th);
       setProcesses(list);
       setLoadMs(performance.now() - t0);
+
+      // CPU 히스토리 갱신
+      const hist = cpuHistoryByPid.current;
+      const currentPids = new Set(list.map(p => p.pid));
+      for (const pid of Array.from(hist.keys())) {
+        if (!currentPids.has(pid)) hist.delete(pid);
+      }
+      for (const p of list) {
+        const arr = hist.get(p.pid) ?? [];
+        arr.push(p.cpu_percent);
+        if (arr.length > CPU_HISTORY_MAX) arr.shift();
+        hist.set(p.pid, arr);
+      }
+      setCpuHistoryVersion(v => v + 1);
     } catch (e) {
       setLoadError(String(e));
     } finally {
       setLoading(false);
     }
   }, []);
+
+  // 새 Map 참조를 ProcessTable에 전달하기 위해 메모이즈
+  const cpuHistoryMap = useMemo(() => {
+    // 새 Map을 만들어 ref가 바뀐 것처럼 보이게 함
+    return new Map(cpuHistoryByPid.current);
+  }, [cpuHistoryVersion]);
 
   useEffect(() => { refreshProcesses(threshold); }, [threshold, refreshProcesses]);
 
@@ -565,7 +653,11 @@ function AppInner() {
             onToggle={() => setNotifOpen(v => !v)}
             onRead={() => setNotifs(prev => prev.map(n => ({ ...n, read: true })))}
             onClear={() => setNotifs([])}
+            maxCount={settings.notif_max_count ?? 50}
           />
+          <button onClick={() => setMiniMode(true)} className="btn btn-ghost !px-2" title={t("process.miniMode")}>
+            <Minimize2 className="w-4 h-4" />
+          </button>
           <button onClick={() => setShowShortcuts(true)} className="btn btn-ghost !px-2" title={t("header.shortcuts")}>
             <Keyboard className="w-4 h-4" />
           </button>
@@ -674,6 +766,9 @@ function AppInner() {
                 onProtect={handleProtect}
                 loading={loading}
                 error={loadError}
+                cpuHistory={cpuHistoryMap}
+                killPresets={settings.kill_presets}
+                onSelectPids={(pids) => setSelected(new Set(pids))}
               />
             </div>
           </div>
@@ -788,6 +883,54 @@ function AppInner() {
 
       {/* 토스트 컨테이너 (모든 alert 대체) */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
+
+      {/* 미니 모드 오버레이 (기능 #5) */}
+      {miniMode && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm flex items-end justify-end p-4 pointer-events-none">
+          <div className="pointer-events-auto bg-white dark:bg-surface-dark-alt rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4 w-72 animate-fade-in">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">
+                  <Zap className="w-3.5 h-3.5 text-white" fill="currentColor" />
+                </div>
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Memory Cleaner</span>
+              </div>
+              <button
+                onClick={() => setMiniMode(false)}
+                title={t("process.fullView")}
+                className="btn btn-ghost !px-1.5"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="text-center py-3">
+              <div className="text-5xl font-bold tabular-nums text-brand-600 dark:text-brand-400">
+                {snap ? snap.percent.toFixed(0) : "—"}<span className="text-2xl text-slate-400">%</span>
+              </div>
+              <div className="text-xs text-slate-500 mt-1">RAM 사용률</div>
+              {sysStats && (
+                <div className="text-xs text-slate-500 mt-2 font-mono">
+                  CPU {sysStats.cpu_percent.toFixed(0)}%
+                </div>
+              )}
+            </div>
+            <button
+              onClick={doQuickClean}
+              disabled={quickCleaning || killing}
+              className="btn !w-full !py-2 bg-gradient-to-r from-emerald-500 to-brand-600 text-white text-sm font-bold disabled:opacity-50"
+            >
+              {quickCleaning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              Quick Clean
+            </button>
+            <button
+              onClick={() => setMiniMode(false)}
+              className="btn btn-ghost !w-full mt-1.5 text-xs"
+            >
+              {t("process.fullView")}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

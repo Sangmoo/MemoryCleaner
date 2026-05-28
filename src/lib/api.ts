@@ -100,6 +100,14 @@ export const api = {
   flushAllWorkingSets(): Promise<EmptySetReport> {
     return invoke("flush_all_working_sets");
   },
+
+  // ── v1.2.0 신규 ────────────────────────────────────────────────────────
+  saveRamHistory(history: number[]): Promise<void> {
+    return invoke("save_ram_history", { history });
+  },
+  loadRamHistory(): Promise<number[]> {
+    return invoke("load_ram_history");
+  },
 };
 
 export { isTauri };
