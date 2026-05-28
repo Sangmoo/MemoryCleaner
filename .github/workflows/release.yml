@@ -1,0 +1,53 @@
+name: Release
+
+# v1.0.0, v1.1.0 처럼 "v"로 시작하는 태그를 push하면 자동 실행됩니다.
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write   # GitHub Release 생성 및 파일 첨부 권한
+
+    runs-on: windows-latest   # Tauri Windows 빌드는 Windows 서버에서만 가능
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install Rust stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Build Tauri app & publish GitHub Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}          # 예: v1.0.0
+          releaseName: 'Memory Cleaner ${{ github.ref_name }}'
+          releaseBody: |
+            ## Memory Cleaner ${{ github.ref_name }}
+
+            ### 설치 방법
+            - **권장**: `Memory.Cleaner_x.x.x_x64-setup.exe` (NSIS 설치 관리자)
+            - **대안**: `Memory.Cleaner_x.x.x_x64_en-US.msi` (Windows Installer)
+
+            > Windows 10/11 x64 전용입니다.
+          releaseDraft: false    # true로 바꾸면 "초안"으로 생성 후 수동 게시 가능
+          prerelease: false
