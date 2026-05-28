@@ -65,6 +65,8 @@ async fn auto_clean_loop(app: AppHandle) {
     let mut last_icon_band: i8 = -1;      // 0=초록, 1=노랑, 2=빨강
     // 핫 프로세스 감지 상태 (PID → 경고 발령됨)
     let mut hot_warned: std::collections::HashMap<u32, bool> = std::collections::HashMap::new();
+    // 스케줄러: 마지막으로 실행된 시:분 (중복 실행 방지)
+    let mut last_schedule_run: Option<String> = None;
 
     loop {
         ticker.tick().await;
@@ -97,7 +99,7 @@ async fn auto_clean_loop(app: AppHandle) {
 
         // ── 자동 정리 + 경고: 설정 확인 ────────────────────────────────────
         let (enabled, threshold_pct, interval_secs, protected, excl_start, excl_end,
-             warn_enabled, warn_threshold, hot_detection) = {
+             warn_enabled, warn_threshold, hot_detection, schedules, skip_if_running) = {
             let Ok(s) = state.settings.lock() else { continue };
             (
                 s.auto_clean.enabled,
@@ -109,6 +111,8 @@ async fn auto_clean_loop(app: AppHandle) {
                 s.warn_notifications_enabled,
                 s.warn_threshold_percent,
                 s.hot_process_detection,
+                s.schedules.clone(),
+                s.skip_if_running.iter().map(|s| s.to_lowercase()).collect::<Vec<_>>(),
             )
         };
 
@@ -157,6 +161,81 @@ async fn auto_clean_loop(app: AppHandle) {
             }
         }
 
+        // ── 스케줄러: 매 tick 현재 시:분 확인하여 일치 스케줄 실행 (기능 5) ──
+        {
+            use chrono::{Datelike, Timelike};
+            let now = chrono::Local::now();
+            let current_hm = format!("{:02}:{:02}", now.hour(), now.minute());
+            let current_weekday = now.weekday().num_days_from_sunday() as u8; // 0=일, 6=토
+
+            // 이미 이 분에 실행했으면 스킵
+            let already_ran = last_schedule_run.as_deref() == Some(&current_hm);
+            if !already_ran {
+                let should_run = schedules.iter().any(|s| {
+                    s.enabled
+                        && s.time == current_hm
+                        && (s.days.is_empty() || s.days.contains(&current_weekday))
+                });
+
+                if should_run {
+                    last_schedule_run = Some(current_hm.clone());
+                    // skip_if_running 체크 + PID 수집을 한 번의 락으로
+                    let (should_skip, sched_pids) = {
+                        match state.system.lock() {
+                            Ok(mut sys) => {
+                                sys.refresh_processes(ProcessesToUpdate::All, true);
+                                let skip = sys.processes().values().any(|p| {
+                                    let name = p.name().to_string_lossy().to_lowercase();
+                                    skip_if_running.contains(&name)
+                                });
+                                let pids = if skip {
+                                    vec![]
+                                } else {
+                                    sys.processes()
+                                        .iter()
+                                        .filter_map(|(pid, p)| {
+                                            let name = p.name().to_string_lossy().to_string();
+                                            let pid_u32 = pid.as_u32();
+                                            if pid_u32 == 0 || pid_u32 == 4 || commands::is_sys_name(&name) { return None; }
+                                            if protected.contains(&name.to_lowercase()) { return None; }
+                                            Some(pid_u32)
+                                        })
+                                        .collect()
+                                };
+                                (skip, pids)
+                            }
+                            Err(_) => (false, vec![]),
+                        }
+                    };
+
+                    if !should_skip && !sched_pids.is_empty() {
+                        if let Ok(report) = commands::do_kill(&*state, sched_pids, "schedule") {
+                            let killed = report.results.iter().filter(|r| r.success).count();
+                            if killed > 0 {
+                                let _ = app.emit("auto-clean-done", killed);
+                                use tauri_plugin_notification::NotificationExt;
+                                let body = format!(
+                                    "[스케줄] {}개 프로세스 종료, {:.1}% → {:.1}%",
+                                    killed, report.before_percent, report.after_percent
+                                );
+                                let _ = app.notification().builder()
+                                    .title("Memory Cleaner — 스케줄 정리 완료")
+                                    .body(&body)
+                                    .show();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 분이 바뀌면 last_schedule_run 초기화 (다음 분에 다시 실행 가능하도록)
+            if let Some(ref ran) = last_schedule_run {
+                if ran != &current_hm {
+                    last_schedule_run = None;
+                }
+            }
+        }
+
         if !enabled { continue; }
         if last_clean.elapsed() < Duration::from_secs(interval_secs) { continue; }
 
@@ -174,6 +253,21 @@ async fn auto_clean_loop(app: AppHandle) {
 
         // 임계값 체크
         if percent < threshold_pct { continue; }
+
+        // ── skip_if_running 체크 (기능 9) ──────────────────────────────────
+        if !skip_if_running.is_empty() {
+            let should_skip = match state.system.lock() {
+                Ok(mut sys) => {
+                    sys.refresh_processes(ProcessesToUpdate::All, false);
+                    sys.processes().values().any(|p| {
+                        let name = p.name().to_string_lossy().to_lowercase();
+                        skip_if_running.contains(&name)
+                    })
+                }
+                Err(_) => false,
+            };
+            if should_skip { continue; }
+        }
 
         // PID 수집
         let pids: Vec<u32> = {
@@ -212,14 +306,18 @@ async fn auto_clean_loop(app: AppHandle) {
 }
 
 // ── 트레이 구성 ──────────────────────────────────────────────────────────
+// 기능 4: [앱 열기 / Quick Clean / 전체 RAM 플러시 / --- / 종료]
 
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
-    use tauri::menu::{Menu, MenuItem};
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
-    let show = MenuItem::with_id(app, "show", "앱 열기", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "종료",   true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &quit])?;
+    let show        = MenuItem::with_id(app, "show",       "앱 열기",         true, None::<&str>)?;
+    let quick_clean = MenuItem::with_id(app, "quick_clean","Quick Clean",     true, None::<&str>)?;
+    let flush_ram   = MenuItem::with_id(app, "flush_ram",  "전체 RAM 플러시", true, None::<&str>)?;
+    let sep         = PredefinedMenuItem::separator(app)?;
+    let quit        = MenuItem::with_id(app, "quit",       "종료",            true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &quick_clean, &flush_ram, &sep, &quit])?;
 
     TrayIconBuilder::with_id("main")
         .icon(app.default_window_icon().unwrap().clone())
@@ -227,7 +325,28 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         .tooltip("Memory Cleaner")
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "show" => { if let Some(w) = app.get_webview_window("main") { let _ = w.show(); let _ = w.set_focus(); } }
+            "show" => {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+            "quick_clean" => {
+                // 트레이 Quick Clean → 프론트엔드로 이벤트 전달
+                let _ = app.emit("tray-quick-clean", ());
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+            "flush_ram" => {
+                // 트레이 전체 RAM 플러시 → 프론트엔드로 이벤트 전달
+                let _ = app.emit("tray-flush-ram", ());
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
             "quit" => app.exit(0),
             _ => {}
         })

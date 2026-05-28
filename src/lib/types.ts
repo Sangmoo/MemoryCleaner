@@ -17,6 +17,7 @@ export interface ProcessDetails {
   mem_mb: number;
   cpu_percent: number;
   status: string;
+  virtual_mem_mb: number;
 }
 
 export interface MemorySnapshot {
@@ -54,6 +55,13 @@ export interface AutoCleanConfig {
   exclude_end_hour: number | null;
 }
 
+export interface CleanSchedule {
+  id: string;
+  time: string;   // "HH:MM"
+  days: number[]; // 0=일, 1=월, ..., 6=토
+  enabled: boolean;
+}
+
 export interface AppSettings {
   auto_clean: AutoCleanConfig;
   protected_processes: string[];
@@ -65,6 +73,9 @@ export interface AppSettings {
   profiles: SettingsProfile[];
   onboarding_done: boolean;
   hot_process_detection: boolean;
+  schedules: CleanSchedule[];
+  skip_if_running: string[];
+  language: string;
 }
 
 export interface CleanupOptions {

@@ -52,6 +52,7 @@ pub struct ProcessDetails {
     pub mem_mb: f64,
     pub cpu_percent: f32,
     pub status: String,
+    pub virtual_mem_mb: f64,
 }
 
 #[derive(Serialize)]
@@ -209,6 +210,7 @@ pub fn get_process_details(
             mem_mb: p.memory() as f64 / 1_048_576.0,
             cpu_percent: p.cpu_usage(),
             status: format!("{:?}", p.status()),
+            virtual_mem_mb: p.virtual_memory() as f64 / 1_048_576.0,
         }),
         None => Err("프로세스를 찾을 수 없습니다.".into()),
     }

@@ -1,7 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Bell, X, CheckCircle2, AlertTriangle, Flame, Trash2 } from "lucide-react";
 import clsx from "clsx";
+import { useT } from "../lib/i18n";
 
 export type NotifType = "auto_clean" | "mem_warn" | "cpu_spike" | "info";
 
@@ -44,6 +45,9 @@ const TYPE_CFG: Record<NotifType, {
   },
 };
 
+// 기능 11: 필터 탭
+type FilterType = "all" | "auto_clean" | "mem_warn" | "cpu_spike";
+
 function fmtTime(d: Date) {
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
@@ -56,8 +60,21 @@ function fmtTime(d: Date) {
 }
 
 export function NotificationCenter({ notifs, open, onToggle, onRead, onClear }: Props) {
+  const t = useT();
   const panelRef = useRef<HTMLDivElement>(null);
+  const [filter, setFilter] = useState<FilterType>("all");
   const unread = notifs.filter(n => !n.read).length;
+
+  // 필터별 개수
+  const counts: Record<FilterType, number> = {
+    all:        notifs.length,
+    auto_clean: notifs.filter(n => n.type === "auto_clean").length,
+    mem_warn:   notifs.filter(n => n.type === "mem_warn").length,
+    cpu_spike:  notifs.filter(n => n.type === "cpu_spike").length,
+  };
+
+  // 필터 적용된 목록
+  const filtered = filter === "all" ? notifs : notifs.filter(n => n.type === filter);
 
   // 바깥 클릭 시 닫기
   useEffect(() => {
@@ -76,6 +93,13 @@ export function NotificationCenter({ notifs, open, onToggle, onRead, onClear }: 
     if (open && unread > 0) onRead();
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const filterTabs: Array<{ key: FilterType; label: string }> = [
+    { key: "all",        label: t("notifications.all") },
+    { key: "auto_clean", label: t("notifications.autoClean") },
+    { key: "mem_warn",   label: t("notifications.memWarn") },
+    { key: "cpu_spike",  label: t("notifications.cpuSpike") },
+  ];
+
   return (
     <div className="relative" ref={panelRef}>
       {/* 벨 버튼 */}
@@ -85,7 +109,7 @@ export function NotificationCenter({ notifs, open, onToggle, onRead, onClear }: 
           "btn btn-ghost !px-2 relative",
           open && "bg-slate-100 dark:bg-slate-700"
         )}
-        title="알림 센터"
+        title={t("notifications.title")}
       >
         <Bell className="w-4 h-4" />
         {unread > 0 && (
@@ -98,20 +122,20 @@ export function NotificationCenter({ notifs, open, onToggle, onRead, onClear }: 
       {/* 드롭다운 패널 */}
       {open && createPortal(
         <div
-          className="fixed z-[300] w-80 max-h-[420px] flex flex-col
+          className="fixed z-[300] w-80 max-h-[480px] flex flex-col
             bg-white dark:bg-slate-800 rounded-2xl shadow-2xl
             border border-slate-200 dark:border-slate-700 animate-fade-in"
           style={{ top: 56, right: 16 }}
         >
           {/* 헤더 */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
-            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">알림 센터</span>
+            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{t("notifications.title")}</span>
             <div className="flex items-center gap-1">
               {notifs.length > 0 && (
                 <button
                   onClick={onClear}
                   className="btn btn-ghost !px-1.5 text-xs text-slate-400 hover:text-red-500"
-                  title="전체 지우기"
+                  title={t("notifications.clear")}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -122,15 +146,43 @@ export function NotificationCenter({ notifs, open, onToggle, onRead, onClear }: 
             </div>
           </div>
 
+          {/* 기능 11: 필터 탭 */}
+          <div className="flex border-b border-slate-200 dark:border-slate-700 px-2 pt-1 gap-0.5 overflow-x-auto">
+            {filterTabs.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setFilter(key)}
+                className={clsx(
+                  "flex items-center gap-1 px-2 py-1.5 text-xs font-medium rounded-t-lg transition-colors whitespace-nowrap",
+                  filter === key
+                    ? "bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 border-b-2 border-brand-500"
+                    : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                )}
+              >
+                {label}
+                {counts[key] > 0 && (
+                  <span className={clsx(
+                    "text-[9px] px-1 py-0.5 rounded-full font-bold",
+                    filter === key
+                      ? "bg-brand-600 text-white"
+                      : "bg-slate-200 dark:bg-slate-600 text-slate-500 dark:text-slate-300"
+                  )}>
+                    {counts[key]}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
           {/* 알림 목록 */}
           <div className="overflow-y-auto flex-1">
-            {notifs.length === 0 ? (
+            {filtered.length === 0 ? (
               <div className="py-10 text-center text-sm text-slate-400">
                 <Bell className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                알림이 없습니다
+                {t("notifications.empty")}
               </div>
             ) : (
-              [...notifs].reverse().map(n => {
+              [...filtered].reverse().map(n => {
                 const cfg = TYPE_CFG[n.type];
                 return (
                   <div

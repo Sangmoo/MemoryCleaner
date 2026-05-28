@@ -39,6 +39,21 @@ pub struct SettingsProfile {
     pub warn_threshold_percent: f64,
 }
 
+/// 자동 정리 스케줄
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CleanSchedule {
+    pub id: String,
+    /// HH:MM 형식 (예: "03:00")
+    pub time: String,
+    /// 요일 0=일, 1=월, ..., 6=토
+    #[serde(default)]
+    pub days: Vec<u8>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+fn default_true() -> bool { true }
+
 fn default_profiles() -> Vec<SettingsProfile> {
     vec![
         SettingsProfile {
@@ -85,12 +100,22 @@ pub struct AppSettings {
     /// CPU 급등 감지 활성화
     #[serde(default = "default_hot_detection")]
     pub hot_process_detection: bool,
+    /// 자동 정리 스케줄 목록 (기능 5)
+    #[serde(default)]
+    pub schedules: Vec<CleanSchedule>,
+    /// 이 프로세스가 실행 중이면 자동 정리 건너뜀 (기능 9)
+    #[serde(default)]
+    pub skip_if_running: Vec<String>,
+    /// 표시 언어 (기능 10)
+    #[serde(default = "default_language")]
+    pub language: String,
 }
 
 fn default_process_refresh_secs() -> u64 { 10 }
 fn default_warn_enabled() -> bool { true }
 fn default_warn_threshold() -> f64 { 90.0 }
 fn default_hot_detection() -> bool { true }
+fn default_language() -> String { "ko".to_string() }
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -105,6 +130,9 @@ impl Default for AppSettings {
             profiles: default_profiles(),
             onboarding_done: false,
             hot_process_detection: true,
+            schedules: Vec::new(),
+            skip_if_running: Vec::new(),
+            language: "ko".to_string(),
         }
     }
 }

@@ -13,6 +13,7 @@ import { toast } from "./lib/toast";
 import type {
   AppSettings, HotProcessEvent, MemorySnapshot, ProcessInfo, RecoveryReport, SystemStats,
 } from "./lib/types";
+import { I18nProvider, useT, type Locale } from "./lib/i18n";
 import { MemoryGauge } from "./components/MemoryGauge";
 import { MemoryGraph } from "./components/MemoryGraph";
 import { ProcessTable } from "./components/ProcessTable";
@@ -35,6 +36,7 @@ import type { ToastItem } from "./lib/toast";
 const MEM_REFRESH_MS = 3_000;
 const STATS_REFRESH_MS = 4_000;
 const GRAPH_MAX_POINTS = 60; // 3분치
+const RAM_HISTORY_MAX = 1440; // 24시간 (분 단위)
 
 type Tab = "process" | "history" | "startup" | "insights";
 
@@ -73,9 +75,15 @@ const DEFAULT_SETTINGS: AppSettings = {
   profiles: [],
   onboarding_done: false,
   hot_process_detection: true,
+  schedules: [],
+  skip_if_running: [],
+  language: "ko",
 };
 
-export default function App() {
+// ── 내부 앱 컴포넌트 (i18n context 안에서 실행) ───────────────────────────
+function AppInner() {
+  const t = useT();
+
   // ── 토스트 시스템 ──────────────────────────────────────────────────────
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const toastCounter = useRef(0);
@@ -129,6 +137,10 @@ export default function App() {
   const [snap, setSnap] = useState<MemorySnapshot | null>(null);
   const [memHistory, setMemHistory] = useState<number[]>([]);
 
+  // ── RAM 히스토리 (분 단위, 최대 24시간) — 기능 7 ──────────────────────
+  const [ramHistoryMinute, setRamHistoryMinute] = useState<number[]>([]);
+  const lastMinuteRef = useRef<number>(-1);
+
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
@@ -140,6 +152,16 @@ export default function App() {
             const next = [...prev, m.percent];
             return next.length > GRAPH_MAX_POINTS ? next.slice(-GRAPH_MAX_POINTS) : next;
           });
+
+          // 분이 바뀔 때마다 ramHistoryMinute에 추가
+          const nowMin = new Date().getMinutes();
+          if (nowMin !== lastMinuteRef.current) {
+            lastMinuteRef.current = nowMin;
+            setRamHistoryMinute(prev => {
+              const next = [...prev, Math.round(m.percent)];
+              return next.length > RAM_HISTORY_MAX ? next.slice(-RAM_HISTORY_MAX) : next;
+            });
+          }
         }
       } catch (e) { console.error(e); }
     };
@@ -162,7 +184,8 @@ export default function App() {
 
   // ── 트레이 최초 숨김 안내 ────────────────────────────────────────────
   const [trayHintShown, setTrayHintShown] = useState(false);
-  const showTrayHint = () => {
+  const [trayHint, setTrayHint] = useState(false);
+  const showTrayHintFn = () => {
     const key = "mc-tray-hint-shown";
     if (!localStorage.getItem(key) && !trayHintShown) {
       setTrayHint(true);
@@ -171,6 +194,8 @@ export default function App() {
       setTimeout(() => setTrayHint(false), 5000);
     }
   };
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _showTrayHint = showTrayHintFn; // 나중에 사용 예정
 
   // ── 온보딩 ───────────────────────────────────────────────────────────
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -200,27 +225,38 @@ export default function App() {
     let unl1: (() => void) | null = null;
     let unl2: (() => void) | null = null;
     let unl3: (() => void) | null = null;
+    let unl4: (() => void) | null = null;
+    let unl5: (() => void) | null = null;
 
     listen<number>("auto-clean-done", (e) => {
       setAutoCleanToast(true);
       setTimeout(() => setAutoCleanToast(false), 3000);
       refreshProcesses(threshold);
-      addNotif("auto_clean", "자동 정리 완료", `${e.payload}개 프로세스 종료`);
+      addNotif("auto_clean", t("notifications.autoCleanTitle"), `${e.payload}개 프로세스 종료`);
     }).then(fn => { unl1 = fn; }).catch(console.error);
 
     listen<number>("memory-warning", (e) => {
       setMemWarnToast(e.payload);
       setTimeout(() => setMemWarnToast(null), 6000);
-      addNotif("mem_warn", "메모리 경고", `RAM 사용률 ${e.payload.toFixed(1)}%`);
+      addNotif("mem_warn", t("notifications.memWarnTitle"), `RAM ${e.payload.toFixed(1)}%`);
     }).then(fn => { unl2 = fn; }).catch(console.error);
 
     listen<HotProcessEvent>("hot-process", (e) => {
       setHotProcessToast(e.payload);
       setTimeout(() => setHotProcessToast(null), 6000);
-      addNotif("cpu_spike", "CPU 급등 감지", `${e.payload.name} — ${e.payload.cpu.toFixed(1)}%`);
+      addNotif("cpu_spike", t("notifications.cpuSpikeTitle"), `${e.payload.name} — CPU ${e.payload.cpu.toFixed(1)}%`);
     }).then(fn => { unl3 = fn; }).catch(console.error);
 
-    return () => { unl1?.(); unl2?.(); unl3?.(); };
+    // ── 트레이 퀵 메뉴 이벤트 (기능 4) ─────────────────────────────────
+    listen<void>("tray-quick-clean", () => {
+      doQuickClean();
+    }).then(fn => { unl4 = fn; }).catch(console.error);
+
+    listen<void>("tray-flush-ram", () => {
+      doFlushAll();
+    }).then(fn => { unl5 = fn; }).catch(console.error);
+
+    return () => { unl1?.(); unl2?.(); unl3?.(); unl4?.(); unl5?.(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 프로세스 ──────────────────────────────────────────────────────────
@@ -238,8 +274,6 @@ export default function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [report, setReport] = useState<RecoveryReport | null>(null);
-  // 최초 트레이 숨김 안내
-  const [trayHint, setTrayHint] = useState(false);
 
   // ── 프로세스 상세 ──────────────────────────────────────────────────────
   const [detailPid, setDetailPid] = useState<{ pid: number; name: string } | null>(null);
@@ -292,9 +326,9 @@ export default function App() {
     });
   }, []);
 
-  const selectAll       = () => setSelected(new Set(processes.filter(p => !p.is_system && !p.is_protected).map(p => p.pid)));
+  const selectAll         = () => setSelected(new Set(processes.filter(p => !p.is_system && !p.is_protected).map(p => p.pid)));
   const selectRecommended = () => setSelected(new Set(processes.filter(p => p.safe_kill).map(p => p.pid)));
-  const deselectAll     = () => setSelected(new Set());
+  const deselectAll       = () => setSelected(new Set());
 
   // ── 보호 목록 즉시 추가 (우클릭 컨텍스트 메뉴) ──────────────────────
   const handleProtect = useCallback(async (name: string) => {
@@ -367,8 +401,8 @@ export default function App() {
     setFlushing(true);
     try {
       const r = await api.flushAllWorkingSets();
-      toast.success(`${r.processed}개 프로세스 압축 완료`, "전체 RAM 플러시");
-      addNotif("info", "전체 RAM 플러시", `${r.processed}개 압축 완료`);
+      toast.success(`${r.processed}개 프로세스 압축 완료`, t("footer.flushAll"));
+      addNotif("info" as NotifType, t("footer.flushAll"), `${r.processed}개 압축 완료`);
       await refreshProcesses(threshold);
     } catch (e) {
       toast.error(String(e), "RAM 플러시 오류");
@@ -400,13 +434,11 @@ export default function App() {
   // ── 키보드 단축키 ─────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // input/textarea에 포커스 있으면 단축키 무시
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
-      // 모달 열려 있으면 일부 단축키만 처리
       const modalOpen = showSettings || showDiskCleanup || showConfirm || detailPid !== null || showShortcuts;
-      if (e.key === "Escape" && modalOpen) return; // 모달 자체 닫기 우선
+      if (e.key === "Escape" && modalOpen) return;
 
       if (e.key === "F5") {
         e.preventDefault();
@@ -436,7 +468,7 @@ export default function App() {
       {/* 자동정리 토스트 */}
       {autoCleanToast && (
         <div className="fixed top-4 right-4 z-50 px-4 py-2 bg-brand-600 text-white text-sm rounded-xl shadow-lg animate-fade-in">
-          ✨ 자동 정리 완료
+          ✨ {t("notifications.autoCleanTitle")}
         </div>
       )}
 
@@ -445,8 +477,8 @@ export default function App() {
         <div className="fixed top-4 right-4 z-50 px-4 py-3 bg-red-600 text-white text-sm rounded-xl shadow-lg animate-fade-in flex items-center gap-2.5 max-w-xs">
           <AlertTriangle className="w-5 h-5 flex-shrink-0" />
           <div>
-            <div className="font-bold">메모리 경고</div>
-            <div className="text-xs opacity-90">RAM 사용률 {memWarnToast.toFixed(1)}% — 정리를 권장합니다.</div>
+            <div className="font-bold">{t("notifications.memWarnTitle")}</div>
+            <div className="text-xs opacity-90">RAM {memWarnToast.toFixed(1)}%</div>
           </div>
         </div>
       )}
@@ -456,7 +488,7 @@ export default function App() {
         <div className="fixed top-4 left-4 z-50 px-4 py-3 bg-orange-500 text-white text-sm rounded-xl shadow-lg animate-fade-in flex items-center gap-2.5 max-w-xs">
           <Flame className="w-5 h-5 flex-shrink-0" />
           <div>
-            <div className="font-bold">CPU 급등 감지</div>
+            <div className="font-bold">{t("notifications.cpuSpikeTitle")}</div>
             <div className="text-xs opacity-90">
               {hotProcessToast.name} — CPU {hotProcessToast.cpu.toFixed(1)}%
             </div>
@@ -475,11 +507,11 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-base font-bold leading-tight">Memory Cleaner</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 leading-tight">스마트 메모리 정리 도구</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-tight">{t("app.subtitle")}</p>
           </div>
           {settings.auto_clean.enabled && (
             <span className="ml-1 text-xs px-2 py-0.5 rounded-full bg-brand-100 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 font-medium">
-              자동정리 ON
+              {t("app.autoOnBadge")}
             </span>
           )}
 
@@ -498,7 +530,7 @@ export default function App() {
                 </div>
                 <span className="font-mono tabular-nums">{sysStats.cpu_percent.toFixed(0)}%</span>
               </div>
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400" title={`디스크 C: ${sysStats.disk_used_pct.toFixed(1)}% 사용`}>
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400" title={`${t("header.disk")} C: ${sysStats.disk_used_pct.toFixed(1)}%`}>
                 <HardDrive className="w-3.5 h-3.5" />
                 <div className="w-12 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                   <div
@@ -508,7 +540,7 @@ export default function App() {
                     style={{ width: `${Math.min(100, sysStats.disk_used_pct)}%` }}
                   />
                 </div>
-                <span className="font-mono tabular-nums">{sysStats.disk_free_gb.toFixed(0)}GB 여유</span>
+                <span className="font-mono tabular-nums">{sysStats.disk_free_gb.toFixed(0)}GB</span>
               </div>
             </div>
           )}
@@ -518,14 +550,14 @@ export default function App() {
           <button
             onClick={doQuickClean}
             disabled={quickCleaning || killing}
-            title="추천 프로세스 즉시 정리 (Ctrl+Q)"
+            title={`${t("header.quickClean")} (Ctrl+Q)`}
             className="btn !px-3 !py-1.5 text-xs font-semibold bg-gradient-to-r from-emerald-500 to-brand-600 text-white hover:opacity-90 disabled:opacity-50 shadow-sm"
           >
             {quickCleaning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-            Quick Clean
+            {t("header.quickClean")}
           </button>
-          <button onClick={() => setShowDiskCleanup(true)} className="btn btn-ghost !px-2.5" title="디스크 정리">
-            <HardDrive className="w-4 h-4" /><span className="text-xs">디스크</span>
+          <button onClick={() => setShowDiskCleanup(true)} className="btn btn-ghost !px-2.5" title={t("header.disk")}>
+            <HardDrive className="w-4 h-4" /><span className="text-xs">{t("header.disk")}</span>
           </button>
           <NotificationCenter
             notifs={notifs}
@@ -534,18 +566,18 @@ export default function App() {
             onRead={() => setNotifs(prev => prev.map(n => ({ ...n, read: true })))}
             onClear={() => setNotifs([])}
           />
-          <button onClick={() => setShowShortcuts(true)} className="btn btn-ghost !px-2" title="단축키 도움말 (?)">
+          <button onClick={() => setShowShortcuts(true)} className="btn btn-ghost !px-2" title={t("header.shortcuts")}>
             <Keyboard className="w-4 h-4" />
           </button>
           <button onClick={() => setShowSettings(true)} className="btn btn-ghost !px-2.5">
-            <Settings className="w-4 h-4" /><span className="text-xs">설정</span>
+            <Settings className="w-4 h-4" /><span className="text-xs">{t("header.settings")}</span>
           </button>
-          <button onClick={() => setShowAbout(true)} className="btn btn-ghost !px-2" title="앱 정보">
+          <button onClick={() => setShowAbout(true)} className="btn btn-ghost !px-2" title={t("header.about")}>
             <Info className="w-4 h-4" />
           </button>
           <button onClick={() => setDark(!dark)} className="btn btn-ghost !px-2.5">
             {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            <span className="text-xs">{dark ? "라이트" : "다크"}</span>
+            <span className="text-xs">{dark ? t("header.light") : t("header.dark")}</span>
           </button>
         </div>
       </header>
@@ -561,10 +593,10 @@ export default function App() {
         {/* 탭 */}
         <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700">
           {([
-            ["process",  "프로세스",    <PlayCircle className="w-3.5 h-3.5" />],
-            ["history",  "히스토리",    <History    className="w-3.5 h-3.5" />],
-            ["insights", "인사이트",    <BarChart2  className="w-3.5 h-3.5" />],
-            ["startup",  "시작 프로그램", <Zap       className="w-3.5 h-3.5" />],
+            ["process",  t("tabs.process"),  <PlayCircle className="w-3.5 h-3.5" />],
+            ["history",  t("tabs.history"),  <History    className="w-3.5 h-3.5" />],
+            ["insights", t("tabs.insights"), <BarChart2  className="w-3.5 h-3.5" />],
+            ["startup",  t("tabs.startup"),  <Zap        className="w-3.5 h-3.5" />],
           ] as const).map(([id, label, icon]) => (
             <button
               key={id}
@@ -590,16 +622,16 @@ export default function App() {
                 <ThresholdStepper value={threshold} onChange={setThreshold} />
                 <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
                 <button onClick={() => { refreshProcesses(threshold); setNextRefreshIn(refreshIntervalSecs); }} className="btn btn-secondary" disabled={loading}>
-                  <RefreshCw className={clsx("w-3.5 h-3.5", loading && "animate-spin")} /> 새로고침
+                  <RefreshCw className={clsx("w-3.5 h-3.5", loading && "animate-spin")} /> {t("toolbar.refresh")}
                 </button>
                 <button onClick={selectAll} className="btn btn-secondary">
-                  <CheckSquare className="w-3.5 h-3.5" /> 전체
+                  <CheckSquare className="w-3.5 h-3.5" /> {t("toolbar.all")}
                 </button>
                 <button onClick={selectRecommended} className="btn btn-secondary">
-                  <Sparkles className="w-3.5 h-3.5" /> 추천
+                  <Sparkles className="w-3.5 h-3.5" /> {t("toolbar.recommended")}
                 </button>
                 <button onClick={deselectAll} className="btn btn-ghost">
-                  <Square className="w-3.5 h-3.5" /> 해제
+                  <Square className="w-3.5 h-3.5" /> {t("toolbar.deselect")}
                 </button>
                 <div className="ml-auto text-xs text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1.5">
                   {stats.total}개 · 추천 {stats.recommended}개 · 보호 {stats.protected}개
@@ -657,7 +689,7 @@ export default function App() {
         {/* 인사이트 탭 */}
         {tab === "insights" && (
           <div className="flex-1 min-h-0">
-            <InsightsPanel />
+            <InsightsPanel ramHistory={ramHistoryMinute} />
           </div>
         )}
 
@@ -676,7 +708,7 @@ export default function App() {
             {(killing || emptyingSet) && (
               <span className="inline-flex items-center gap-1.5">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                {killing ? "프로세스 종료 중…" : "메모리 압축 중…"}
+                {killing ? t("footer.killing") : t("footer.compressing")}
               </span>
             )}
           </div>
@@ -688,21 +720,21 @@ export default function App() {
               className="btn btn-secondary px-4 py-2 text-sm"
             >
               {flushing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-              전체 RAM 플러시
+              {t("footer.flushAll")}
             </button>
             <button
               onClick={doEmptyWorkingSet}
               disabled={stats.selectedCount === 0 || emptyingSet || killing}
               className="btn btn-secondary px-4 py-2 text-sm"
             >
-              <Wind className="w-4 h-4" /> 메모리 압축
+              <Wind className="w-4 h-4" /> {t("footer.compress")}
             </button>
             <button
               onClick={() => setShowConfirm(true)}
               disabled={stats.selectedCount === 0 || killing || emptyingSet}
               className="btn btn-danger px-5 py-2 text-sm font-bold"
             >
-              <Skull className="w-4 h-4" /> 선택한 {stats.selectedCount}개 Kill
+              <Skull className="w-4 h-4" /> {t("footer.kill", stats.selectedCount)}
             </button>
           </div>
         </footer>
@@ -763,13 +795,14 @@ export default function App() {
 // ── 단축키 도움말 ───────────────────────────────────────────────────────────
 
 function ShortcutsDialog({ onClose }: { onClose: () => void }) {
+  const t = useT();
   const items: Array<[string, string]> = [
-    ["F5",        "프로세스 목록 새로고침"],
-    ["Ctrl + Q",  "Quick Clean (추천 즉시 정리)"],
-    ["Ctrl + A",  "전체 선택"],
-    ["Delete",    "선택 항목 Kill 확인 창"],
-    ["Esc",       "선택 해제 (모달 닫기 우선)"],
-    ["?",         "이 도움말"],
+    ["F5",        t("shortcuts.f5")],
+    ["Ctrl + Q",  t("shortcuts.ctrlQ")],
+    ["Ctrl + A",  t("shortcuts.ctrlA")],
+    ["Delete",    t("shortcuts.delete")],
+    ["Esc",       t("shortcuts.esc")],
+    ["?",         t("shortcuts.question")],
   ];
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose}>
@@ -777,7 +810,7 @@ function ShortcutsDialog({ onClose }: { onClose: () => void }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700">
           <div className="flex items-center gap-2.5">
             <Keyboard className="w-5 h-5 text-brand-500" />
-            <h2 className="text-sm font-bold">키보드 단축키</h2>
+            <h2 className="text-sm font-bold">{t("shortcuts.title")}</h2>
           </div>
           <button onClick={onClose} className="btn btn-ghost !px-2">
             <span className="text-lg leading-none">×</span>
@@ -793,10 +826,40 @@ function ShortcutsDialog({ onClose }: { onClose: () => void }) {
             </div>
           ))}
           <div className="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
-            * 입력 필드에 포커스가 있을 때는 단축키가 동작하지 않습니다.
+            {t("shortcuts.note")}
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+// ── 최상위 App: I18nProvider로 감싸기 ─────────────────────────────────────
+export default function App() {
+  // 설정에서 language를 읽어 locale 결정
+  const [locale, setLocale] = useState<Locale>("ko");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    // 초기 로딩 시 localStorage에서 언어 확인
+    const saved = localStorage.getItem("memtool-language");
+    if (saved === "ko" || saved === "en" || saved === "ja") {
+      setLocale(saved as Locale);
+    }
+    // settings에서도 로드
+    if (!isTauri) return;
+    api.getSettings().then(s => {
+      const lang = s.language as Locale;
+      if (lang === "ko" || lang === "en" || lang === "ja") {
+        setLocale(lang);
+        localStorage.setItem("memtool-language", lang);
+      }
+    }).catch(console.error);
+  }, []);
+
+  return (
+    <I18nProvider value={locale}>
+      <AppInner />
+    </I18nProvider>
   );
 }

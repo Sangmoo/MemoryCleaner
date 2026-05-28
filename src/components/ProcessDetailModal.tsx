@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { X, Loader2, Terminal, HardDrive, Cpu, Activity } from "lucide-react";
 import { api } from "../lib/api";
+import { useT } from "../lib/i18n";
 import type { ProcessDetails } from "../lib/types";
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function ProcessDetailModal({ pid, name, onClose }: Props) {
+  const t = useT();
   const [detail, setDetail] = useState<ProcessDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,7 +51,7 @@ export function ProcessDetailModal({ pid, name, onClose }: Props) {
           {!detail && !error && (
             <div className="flex items-center justify-center gap-2 py-10 text-slate-400">
               <Loader2 className="w-5 h-5 animate-spin" />
-              <span className="text-sm">불러오는 중…</span>
+              <span className="text-sm">{t("common.loading")}</span>
             </div>
           )}
 
@@ -66,7 +68,7 @@ export function ProcessDetailModal({ pid, name, onClose }: Props) {
                 <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3 flex items-center gap-3">
                   <HardDrive className="w-5 h-5 text-brand-500 flex-shrink-0" />
                   <div>
-                    <div className="text-xs text-slate-400">메모리 사용량</div>
+                    <div className="text-xs text-slate-400">{t("process.memory")}</div>
                     <div className="text-base font-bold text-slate-700 dark:text-slate-200">
                       {detail.mem_mb < 1024
                         ? `${detail.mem_mb.toFixed(1)} MB`
@@ -77,7 +79,7 @@ export function ProcessDetailModal({ pid, name, onClose }: Props) {
                 <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3 flex items-center gap-3">
                   <Cpu className="w-5 h-5 text-amber-500 flex-shrink-0" />
                   <div>
-                    <div className="text-xs text-slate-400">CPU 사용률</div>
+                    <div className="text-xs text-slate-400">{t("process.cpu")}</div>
                     <div className="text-base font-bold text-slate-700 dark:text-slate-200">
                       {detail.cpu_percent.toFixed(1)}%
                     </div>
@@ -85,9 +87,24 @@ export function ProcessDetailModal({ pid, name, onClose }: Props) {
                 </div>
               </div>
 
+              {/* 가상 메모리 */}
+              {detail.virtual_mem_mb > 0 && (
+                <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3 flex items-center gap-3">
+                  <HardDrive className="w-5 h-5 text-purple-500 flex-shrink-0" />
+                  <div>
+                    <div className="text-xs text-slate-400">Virtual Memory</div>
+                    <div className="text-base font-bold text-slate-700 dark:text-slate-200">
+                      {detail.virtual_mem_mb < 1024
+                        ? `${detail.virtual_mem_mb.toFixed(1)} MB`
+                        : `${(detail.virtual_mem_mb / 1024).toFixed(2)} GB`}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* 상태 */}
               <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3">
-                <div className="text-xs text-slate-400 mb-1">상태</div>
+                <div className="text-xs text-slate-400 mb-1">Status</div>
                 <div className="text-sm font-mono text-slate-600 dark:text-slate-300">{detail.status}</div>
               </div>
 
@@ -95,7 +112,7 @@ export function ProcessDetailModal({ pid, name, onClose }: Props) {
               {detail.exe_path && (
                 <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3">
                   <div className="flex items-center gap-1.5 text-xs text-slate-400 mb-1">
-                    <HardDrive className="w-3.5 h-3.5" /> 실행 경로
+                    <HardDrive className="w-3.5 h-3.5" /> Path
                   </div>
                   <div className="text-xs font-mono text-slate-600 dark:text-slate-300 break-all leading-relaxed">
                     {detail.exe_path}
@@ -107,7 +124,7 @@ export function ProcessDetailModal({ pid, name, onClose }: Props) {
               {detail.cmd.length > 0 && (
                 <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3">
                   <div className="flex items-center gap-1.5 text-xs text-slate-400 mb-1.5">
-                    <Terminal className="w-3.5 h-3.5" /> 명령줄 인수
+                    <Terminal className="w-3.5 h-3.5" /> Command Line
                   </div>
                   <div className="space-y-1">
                     {detail.cmd.map((arg, i) => (
@@ -127,7 +144,7 @@ export function ProcessDetailModal({ pid, name, onClose }: Props) {
         </div>
 
         <div className="flex justify-end px-5 py-3 border-t border-slate-200 dark:border-slate-700">
-          <button onClick={onClose} className="btn btn-secondary">닫기</button>
+          <button onClick={onClose} className="btn btn-secondary">{t("about.close")}</button>
         </div>
       </div>
     </div>
