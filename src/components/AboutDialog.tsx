@@ -5,7 +5,7 @@ interface Props {
   onClose: () => void;
 }
 
-const VERSION = "1.0.0";
+const VERSION = "1.2.0";
 const GITHUB_URL = "https://github.com/Sangmoo/MemoryCleaner";
 const RELEASES_URL = `${GITHUB_URL}/releases`;
 

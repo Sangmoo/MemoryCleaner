@@ -69,6 +69,11 @@ export function NotificationCenter({ notifs, open, onToggle, onRead, onClear, ma
   const [filter, setFilter] = useState<FilterType>("all");
   const unread = notifs.filter(n => !n.read).length;
 
+  // onToggle을 ref로 보관 — 부모가 매 렌더마다 새 함수 참조를 넘겨도
+  // useEffect가 재실행되지 않도록 분리. 항상 최신 함수를 유지.
+  const onToggleRef = useRef(onToggle);
+  useEffect(() => { onToggleRef.current = onToggle; });
+
   // 필터별 개수
   const counts: Record<FilterType, number> = {
     all:        notifs.length,
@@ -81,8 +86,8 @@ export function NotificationCenter({ notifs, open, onToggle, onRead, onClear, ma
   const filtered = filter === "all" ? notifs : notifs.filter(n => n.type === filter);
 
   // 바깥 클릭 시 닫기
-  // Portal 패널은 document.body에 붙어 있어 bellRef.contains()로는 잡히지 않음
-  // → dropdownRef도 함께 확인해야 패널 안쪽 버튼 클릭이 outside-click으로 오인되지 않음
+  // - open 변경 시에만 리스너 등록/해제 (onToggle 의존성 제거)
+  // - setTimeout 제거: 등록 공백이 없어야 리스너 누락/중복 없음
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -90,12 +95,12 @@ export function NotificationCenter({ notifs, open, onToggle, onRead, onClear, ma
       const inBell     = bellRef.current?.contains(target);
       const inDropdown = dropdownRef.current?.contains(target);
       if (!inBell && !inDropdown) {
-        onToggle();
+        onToggleRef.current();
       }
     };
-    setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [open, onToggle]);
+  }, [open]);
 
   // 패널 열릴 때 자동으로 모두 읽음
   useEffect(() => {

@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { LogicalSize } from "@tauri-apps/api/dpi";
 
 import { api, isTauri } from "./lib/api";
 import { toast } from "./lib/toast";
@@ -128,6 +130,33 @@ function AppInner() {
   const [dark, setDark] = useDarkMode(settings.theme);
   const [showSettings, setShowSettings] = useState(false);
   const [miniMode, setMiniMode] = useState(false);
+
+  // 미니 모드: 실제 창 크기 변경 (기능 #5)
+  const MINI_W = 280, MINI_H = 265;
+  const FULL_W = 980, FULL_H = 760;
+
+  const enterMiniMode = async () => {
+    setMiniMode(true);
+    if (!isTauri) return;
+    try {
+      const win = getCurrentWindow();
+      // 최솟값을 일시 해제 후 리사이즈
+      await win.setMinSize(new LogicalSize(100, 100));
+      await win.setSize(new LogicalSize(MINI_W, MINI_H));
+      await win.setResizable(false);
+    } catch (e) { console.error(e); }
+  };
+
+  const exitMiniMode = async () => {
+    setMiniMode(false);
+    if (!isTauri) return;
+    try {
+      const win = getCurrentWindow();
+      await win.setResizable(true);
+      await win.setMinSize(new LogicalSize(760, 580));
+      await win.setSize(new LogicalSize(FULL_W, FULL_H));
+    } catch (e) { console.error(e); }
+  };
 
   // 설정 변경 시 notifMax와 accent 동기화
   useEffect(() => {
@@ -550,6 +579,60 @@ function AppInner() {
     return () => window.removeEventListener("keydown", handler);
   }, [tab, selected, processes, threshold, showSettings, showDiskCleanup, showConfirm, detailPid, showShortcuts, refreshIntervalSecs]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── 미니 모드: 창 전체를 소형 카드로 대체 ────────────────────────────
+  if (miniMode) {
+    return (
+      <div className="h-full flex flex-col bg-white dark:bg-surface-dark-alt select-none">
+        {/* 헤더 */}
+        <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-700 shrink-0">
+          <div className="flex items-center gap-1.5">
+            <div className="w-5 h-5 rounded bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">
+              <Zap className="w-3 h-3 text-white" fill="currentColor" />
+            </div>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Memory Cleaner</span>
+          </div>
+          <button onClick={exitMiniMode} className="btn btn-ghost !px-1.5" title={t("process.fullView")}>
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* 중앙 수치 */}
+        <div className="flex-1 flex flex-col items-center justify-center gap-1">
+          <div className="text-center">
+            <div className="text-5xl font-bold tabular-nums leading-none text-brand-600 dark:text-brand-400">
+              {snap ? snap.percent.toFixed(0) : "—"}<span className="text-2xl font-normal text-slate-400">%</span>
+            </div>
+            <div className="text-[11px] text-slate-400 mt-1.5">RAM 사용률</div>
+          </div>
+          {sysStats && (
+            <div className="text-[11px] font-mono text-slate-400 mt-0.5">
+              CPU {sysStats.cpu_percent.toFixed(0)}%
+            </div>
+          )}
+        </div>
+
+        {/* 버튼 */}
+        <div className="px-3 pb-3 flex flex-col gap-1.5 shrink-0">
+          <button
+            onClick={doQuickClean}
+            disabled={quickCleaning}
+            className="btn !w-full !py-2 text-sm font-bold bg-gradient-to-r from-emerald-500 to-brand-600 text-white disabled:opacity-50"
+          >
+            {quickCleaning
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <Sparkles className="w-4 h-4" />}
+            Quick Clean
+          </button>
+          <button onClick={exitMiniMode} className="btn btn-ghost !w-full text-xs text-slate-400">
+            <Maximize2 className="w-3.5 h-3.5" />{t("process.fullView")}
+          </button>
+        </div>
+
+        <ToastContainer toasts={toasts} onRemove={removeToast} />
+      </div>
+    );
+  }
+
   // ── 렌더 ──────────────────────────────────────────────────────────────
   return (
     <div className="h-full flex flex-col bg-surface-alt dark:bg-surface-dark">
@@ -655,7 +738,7 @@ function AppInner() {
             onClear={() => setNotifs([])}
             maxCount={settings.notif_max_count ?? 50}
           />
-          <button onClick={() => setMiniMode(true)} className="btn btn-ghost !px-2" title={t("process.miniMode")}>
+          <button onClick={enterMiniMode} className="btn btn-ghost !px-2" title={t("process.miniMode")}>
             <Minimize2 className="w-4 h-4" />
           </button>
           <button onClick={() => setShowShortcuts(true)} className="btn btn-ghost !px-2" title={t("header.shortcuts")}>
@@ -883,54 +966,6 @@ function AppInner() {
 
       {/* 토스트 컨테이너 (모든 alert 대체) */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
-
-      {/* 미니 모드 오버레이 (기능 #5) */}
-      {miniMode && (
-        <div className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm flex items-end justify-end p-4 pointer-events-none">
-          <div className="pointer-events-auto bg-white dark:bg-surface-dark-alt rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4 w-72 animate-fade-in">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">
-                  <Zap className="w-3.5 h-3.5 text-white" fill="currentColor" />
-                </div>
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Memory Cleaner</span>
-              </div>
-              <button
-                onClick={() => setMiniMode(false)}
-                title={t("process.fullView")}
-                className="btn btn-ghost !px-1.5"
-              >
-                <Maximize2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <div className="text-center py-3">
-              <div className="text-5xl font-bold tabular-nums text-brand-600 dark:text-brand-400">
-                {snap ? snap.percent.toFixed(0) : "—"}<span className="text-2xl text-slate-400">%</span>
-              </div>
-              <div className="text-xs text-slate-500 mt-1">RAM 사용률</div>
-              {sysStats && (
-                <div className="text-xs text-slate-500 mt-2 font-mono">
-                  CPU {sysStats.cpu_percent.toFixed(0)}%
-                </div>
-              )}
-            </div>
-            <button
-              onClick={doQuickClean}
-              disabled={quickCleaning || killing}
-              className="btn !w-full !py-2 bg-gradient-to-r from-emerald-500 to-brand-600 text-white text-sm font-bold disabled:opacity-50"
-            >
-              {quickCleaning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              Quick Clean
-            </button>
-            <button
-              onClick={() => setMiniMode(false)}
-              className="btn btn-ghost !w-full mt-1.5 text-xs"
-            >
-              {t("process.fullView")}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
