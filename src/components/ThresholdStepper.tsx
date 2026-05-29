@@ -1,5 +1,6 @@
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { fmtThreshold, stepThreshold } from "../lib/format";
+import { useT } from "../lib/i18n";
 
 interface Props {
   value: number;
@@ -7,9 +8,10 @@ interface Props {
 }
 
 export function ThresholdStepper({ value, onChange }: Props) {
+  const t = useT();
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-slate-500 dark:text-slate-400">추천 기준</span>
+      <span className="text-xs text-slate-500 dark:text-slate-400">{t("process.thresholdLabel")}</span>
       <div className="flex items-stretch rounded-lg overflow-hidden border border-slate-300 dark:border-slate-600 shadow-sm">
         <div className="px-3 py-1.5 bg-white dark:bg-slate-800 font-mono text-sm font-semibold text-slate-800 dark:text-slate-100 min-w-[68px] text-center select-none">
           {fmtThreshold(value)}

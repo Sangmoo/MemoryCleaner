@@ -24,7 +24,7 @@ function fmtUptime(secs: number) {
 
 function fmtDate(iso: string) {
   try {
-    return new Date(iso).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
+    return new Date(iso).toLocaleDateString(undefined, { month: "2-digit", day: "2-digit" });
   } catch { return iso.slice(0, 10); }
 }
 
@@ -73,7 +73,7 @@ function RamHistoryChart({ data }: { data: number[] }) {
           <Activity className="w-4 h-4 text-brand-500" />
           {t("insights.ramHistory")}
         </h3>
-        <span className="text-xs font-mono text-slate-400">{data.length}분 기록</span>
+        <span className="text-xs font-mono text-slate-400">{t("insights.recordMins", data.length)}</span>
       </div>
       <div className="relative overflow-hidden rounded-lg bg-slate-50 dark:bg-slate-800/60">
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 80 }}>
@@ -108,7 +108,7 @@ function RamHistoryChart({ data }: { data: number[] }) {
         <div className="absolute bottom-1 right-8 text-[9px] font-mono text-slate-400">now</div>
       </div>
       <div className="flex items-center justify-between text-xs text-slate-400">
-        <span>현재: <span className="font-mono font-bold" style={{ color: lineColor }}>{latest.toFixed(0)}%</span></span>
+        <span>{t("insights.currentLabel")} <span className="font-mono font-bold" style={{ color: lineColor }}>{latest.toFixed(0)}%</span></span>
         <span>avg: <span className="font-mono">{(data.reduce((s, v) => s + v, 0) / data.length).toFixed(0)}%</span></span>
         <span>max: <span className="font-mono">{Math.max(...data).toFixed(0)}%</span></span>
       </div>

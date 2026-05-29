@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { RefreshCw, Shield } from "lucide-react";
 import clsx from "clsx";
 import { api } from "../lib/api";
+import { useT } from "../lib/i18n";
 import type { StartupProgram } from "../lib/types";
 
 export function StartupPanel() {
+  const t = useT();
   const [programs, setPrograms] = useState<StartupProgram[]>([]);
   const [loading, setLoading] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
@@ -27,7 +29,7 @@ export function StartupPanel() {
         x.name === p.name && x.source === p.source ? { ...x, enabled: !x.enabled } : x
       ));
     } catch (e) {
-      alert("변경 실패: " + String(e));
+      alert(t("startup.toggleFail", String(e)));
     } finally {
       setToggling(null);
     }
@@ -37,26 +39,26 @@ export function StartupPanel() {
     <div className="flex flex-col gap-3 h-full">
       <div className="flex items-center justify-between">
         <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-          시작 프로그램 ({programs.length}개)
+          {t("startup.count", programs.length)}
         </span>
         <button onClick={load} className="btn btn-secondary" disabled={loading}>
-          <RefreshCw className={clsx("w-3.5 h-3.5", loading && "animate-spin")} /> 새로고침
+          <RefreshCw className={clsx("w-3.5 h-3.5", loading && "animate-spin")} /> {t("startup.refresh")}
         </button>
       </div>
 
       <div className="card overflow-hidden flex-1 min-h-0">
         <div className="flex items-center px-3 py-2 bg-slate-100/70 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-          <div className="w-14 text-center">상태</div>
-          <div className="w-16 text-center">소스</div>
-          <div className="w-40">이름</div>
-          <div className="flex-1">실행 경로</div>
+          <div className="w-14 text-center">{t("startup.colStatus")}</div>
+          <div className="w-16 text-center">{t("startup.source")}</div>
+          <div className="w-40">{t("startup.colName")}</div>
+          <div className="flex-1">{t("startup.colPath")}</div>
         </div>
 
         <div className="overflow-y-auto h-full">
           {loading && programs.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 text-sm">불러오는 중…</div>
+            <div className="p-8 text-center text-slate-400 text-sm">{t("startup.loading")}</div>
           ) : programs.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 text-sm">시작 프로그램이 없습니다.</div>
+            <div className="p-8 text-center text-slate-400 text-sm">{t("startup.noData")}</div>
           ) : (
             programs.map((p, i) => {
               const key = `${p.source}:${p.name}`;
@@ -105,7 +107,7 @@ export function StartupPanel() {
 
       <div className="flex items-center gap-1.5 text-xs text-slate-400">
         <Shield className="w-3.5 h-3.5" />
-        HKLM 항목 변경은 관리자 권한이 필요할 수 있습니다.
+        {t("startup.adminNote")}
       </div>
     </div>
   );

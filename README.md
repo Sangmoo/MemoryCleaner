@@ -1,8 +1,8 @@
-# Memory Cleaner v1.2.3
+# Memory Cleaner v1.2.4
 
 **Windows 전용 스마트 메모리 정리 도구** — Tauri 2 + React 18 + Rust
 
-[![Version](https://img.shields.io/badge/version-1.2.3-blue)](https://github.com/Sangmoo/MemoryCleaner/releases)
+[![Version](https://img.shields.io/badge/version-1.2.4-blue)](https://github.com/Sangmoo/MemoryCleaner/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-brightgreen)](https://github.com/Sangmoo/MemoryCleaner)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Build](https://github.com/Sangmoo/MemoryCleaner/actions/workflows/release.yml/badge.svg)](https://github.com/Sangmoo/MemoryCleaner/actions/workflows/release.yml)
@@ -283,6 +283,10 @@ git push origin v1.2.2
 ---
 
 ## 📦 릴리스 히스토리
+
+### v1.2.4 (2026-05-29)
+- ✅ **i18n 완전성 강화 — 잔여 한국어 하드코딩 전수 제거** — `ProcessTable` (검색창 placeholder, 그룹화/트리/프리셋 버튼, 컬럼 헤더, 상태 메시지), `SettingsModal` (새로고침 간격 옵션, 메모리 경고 섹션, 자동정리 설명, 인터벌 단위, 요일 레이블, Gist 토스트 메시지 등), `InsightsPanel` (분 기록, 현재 레이블, 날짜 로케일), `StartupPanel` (전체), `DiskCleanupDialog` (전체), `ThresholdStepper` 등 6개 컴포넌트에서 남은 한국어 문자열을 모두 `useT()` 기반 다국어로 전환
+- ✅ **ko/en/ja 3개 언어에 신규 번역 키 80+ 추가** — 프로세스 테이블, 컨텍스트 메뉴 우선순위, 설정 세부 설명, 인사이트, 시작 프로그램, 디스크 정리, 임계값 스텝퍼 전 영역 완전 번역
 
 ### v1.2.3 (2026-05-29)
 - 🐛 **테마 색상 즉시 반영** — `tailwind.config.js`의 brand 컬러를 CSS 변수(`var(--color-brand-*)`) 참조로 전환. 저장 시 `applyAccentColor()`가 변수를 업데이트하면 모든 Tailwind 클래스에 실시간 반영. `index.css`에 초기 기본값(Indigo) 추가로 JS 로드 전 깜빡임 없음

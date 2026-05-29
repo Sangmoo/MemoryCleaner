@@ -36,7 +36,7 @@ interface Props {
   onClose: () => void;
 }
 
-const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+// dayLabels is computed inside the component using t() for i18n
 
 // 고유 ID 생성
 let _id = 0;
@@ -44,6 +44,10 @@ function genId() { return `sched-${Date.now()}-${++_id}`; }
 
 export function SettingsModal({ initial, onSave, onClose }: Props) {
   const t = useT();
+  const dayLabels = [
+    t("settings.day0"), t("settings.day1"), t("settings.day2"), t("settings.day3"),
+    t("settings.day4"), t("settings.day5"), t("settings.day6"),
+  ];
   const [settings, setSettings] = useState<AppSettings>(() => {
     const clone: AppSettings = JSON.parse(JSON.stringify(initial));
     if (!clone.schedules) clone.schedules = [];
@@ -233,7 +237,7 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
   // ── Gist 백업 (기능 #10) ──────────────────────────────────────
   const uploadGist = async () => {
     if (!settings.gist_token) {
-      toast.error("GitHub Token이 필요합니다", "Gist 업로드");
+      toast.error(t("settings.gistTokenRequired"), t("settings.gistUpload"));
       return;
     }
     setGistBusy(true);
@@ -260,16 +264,16 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
       const data = await r.json();
       setSettings(prev => ({ ...prev, gist_id: data.id }));
-      toast.success(`Gist ID: ${data.id}`, "Gist 업로드 완료");
+      toast.success(`Gist ID: ${data.id}`, t("settings.gistUploadDone"));
     } catch (e) {
-      toast.error(String(e), "Gist 업로드 실패");
+      toast.error(String(e), t("settings.gistUploadFail"));
     } finally {
       setGistBusy(false);
     }
   };
   const downloadGist = async () => {
     if (!settings.gist_token || !settings.gist_id) {
-      toast.error("Token과 Gist ID가 필요합니다", "Gist 복원");
+      toast.error(t("settings.gistTokenIdRequired"), t("settings.gistDownload"));
       return;
     }
     setGistBusy(true);
@@ -283,7 +287,7 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
       const data = await r.json();
       const file = data.files?.["memory-cleaner-settings.json"];
-      if (!file?.content) throw new Error("memory-cleaner-settings.json 파일을 찾을 수 없습니다");
+      if (!file?.content) throw new Error(t("settings.gistFileMissing"));
       const imported = JSON.parse(file.content) as AppSettings;
       setSettings({
         ...settings,
@@ -291,9 +295,9 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
         gist_token: settings.gist_token,
         gist_id: settings.gist_id,
       });
-      toast.success("저장 버튼을 눌러 적용하세요", "Gist 복원 완료");
+      toast.success(t("settings.gistRestoreHint"), t("settings.gistRestoreDone"));
     } catch (e) {
-      toast.error(String(e), "Gist 복원 실패");
+      toast.error(String(e), t("settings.gistRestoreFail"));
     } finally {
       setGistBusy(false);
     }
@@ -363,7 +367,7 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
         const text = await file.text();
         const imported = JSON.parse(text) as AppSettings;
         if (!imported.auto_clean || !Array.isArray(imported.protected_processes)) {
-          throw new Error("올바른 설정 파일 형식이 아닙니다.");
+          throw new Error(t("settings.importInvalidFormat"));
         }
         setSettings({
           ...settings,
@@ -371,7 +375,7 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
           auto_clean: { ...settings.auto_clean, ...imported.auto_clean },
         });
         if (typeof imported.autostart === "boolean") setAutostart(imported.autostart);
-        toast.success("저장 버튼을 눌러 적용하세요.", t("settings.import"));
+        toast.success(t("settings.importApplyHint"), t("settings.import"));
       } catch (e) {
         toast.error(String(e), t("settings.import"));
       }
@@ -409,7 +413,7 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
                 <RefreshCw className="w-4 h-4 text-slate-400" />
                 <div>
                   <div className="text-sm font-medium">{t("settings.autoRefresh")}</div>
-                  <div className="text-xs text-slate-400 mt-0.5">자동으로 목록을 갱신하는 주기</div>
+                  <div className="text-xs text-slate-400 mt-0.5">{t("settings.autoRefreshDesc")}</div>
                 </div>
               </div>
               <select
@@ -417,12 +421,12 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
                 onChange={e => setSettings(prev => ({ ...prev, process_refresh_seconds: Number(e.target.value) }))}
                 className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm"
               >
-                <option value={5}>5초</option>
-                <option value={10}>10초</option>
-                <option value={30}>30초</option>
-                <option value={60}>1분</option>
-                <option value={180}>3분</option>
-                <option value={300}>5분</option>
+                <option value={5}>{t("settings.presetTimeSec", 5)}</option>
+                <option value={10}>{t("settings.presetTimeSec", 10)}</option>
+                <option value={30}>{t("settings.presetTimeSec", 30)}</option>
+                <option value={60}>{t("settings.presetTimeMin", 1)}</option>
+                <option value={180}>{t("settings.presetTimeMin", 3)}</option>
+                <option value={300}>{t("settings.presetTimeMin", 5)}</option>
               </select>
             </div>
 
@@ -475,15 +479,15 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
               <span className="w-1.5 h-4 rounded-full bg-red-500 inline-block" />
               {t("settings.memWarn")}
-              <span className="text-xs font-normal text-slate-400">(자동정리와 독립)</span>
+              <span className="text-xs font-normal text-slate-400">{t("settings.memWarnIndependent")}</span>
             </h3>
 
             <label className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 cursor-pointer">
               <div className="flex items-center gap-2.5">
                 <Bell className="w-4 h-4 text-slate-400" />
                 <div>
-                  <div className="text-sm font-medium">RAM 임계값 도달 시 OS 알림</div>
-                  <div className="text-xs text-slate-400 mt-0.5">자동정리가 꺼져 있어도 경고만 보냅니다.</div>
+                  <div className="text-sm font-medium">{t("settings.warnRamNotif")}</div>
+                  <div className="text-xs text-slate-400 mt-0.5">{t("settings.warnAlwaysDesc")}</div>
                 </div>
               </div>
               <button
@@ -539,7 +543,7 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
               <div>
                 <div className="text-sm font-medium">{t("settings.enabled")}</div>
                 <div className="text-xs text-slate-400 mt-0.5">
-                  메모리 사용률 초과 시 추천 프로세스를 자동 종료합니다.
+                  {t("settings.autoCleanDesc")}
                 </div>
               </div>
               <button
@@ -587,7 +591,7 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
               <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60">
                 <div className="flex-1">
                   <div className="text-sm font-medium">{t("settings.interval")}</div>
-                  <div className="text-xs text-slate-400">임계값 초과 후 재실행 대기 시간</div>
+                  <div className="text-xs text-slate-400">{t("settings.intervalDesc")}</div>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <input
@@ -599,7 +603,7 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
                     }))}
                     className="w-20 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-right"
                   />
-                  <span className="text-xs text-slate-400">초</span>
+                  <span className="text-xs text-slate-400">{t("settings.secUnit")}</span>
                 </div>
               </div>
 
@@ -703,8 +707,8 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
                   </span>
                   <span className="text-[10px] text-slate-400">
                     {profile.auto_clean_threshold}% / {profile.auto_clean_interval_seconds < 60
-                      ? `${profile.auto_clean_interval_seconds}초`
-                      : `${Math.floor(profile.auto_clean_interval_seconds / 60)}분`}
+                      ? t("settings.presetTimeSec", profile.auto_clean_interval_seconds)
+                      : t("settings.presetTimeMin", Math.floor(profile.auto_clean_interval_seconds / 60))}
                   </span>
                 </button>
               ))}
@@ -721,7 +725,7 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
               <div className="flex items-center gap-2.5">
                 <Cpu className="w-4 h-4 text-slate-400" />
                 <div>
-                  <div className="text-sm font-medium">CPU 70%+ 급등 프로세스 알림</div>
+                  <div className="text-sm font-medium">{t("settings.cpuSpikeLabel")}</div>
                   <div className="text-xs text-slate-400 mt-0.5">{t("settings.cpuSpikeDesc")}</div>
                 </div>
               </div>
@@ -749,7 +753,7 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
               <span className="w-1.5 h-4 rounded-full bg-emerald-500 inline-block" />
               {t("settings.protected")}
-              <span className="text-xs font-normal text-slate-400">(자동·수동 정리에서 제외)</span>
+              <span className="text-xs font-normal text-slate-400">{t("settings.protectedIndependent")}</span>
             </h3>
 
             <div className="flex gap-2">
@@ -810,7 +814,7 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
               </div>
               {/* 요일 선택 */}
               <div className="flex gap-1.5 flex-wrap">
-                {DAY_LABELS.map((label, i) => (
+                {dayLabels.map((label, i) => (
                   <button
                     key={i}
                     type="button"
@@ -826,7 +830,7 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
                   </button>
                 ))}
                 <span className="text-xs text-slate-400 flex items-center ml-1">
-                  (미선택 = 매일)
+                  {t("settings.schedNoSelection")}
                 </span>
               </div>
             </div>
@@ -858,10 +862,10 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
                     <span className="font-mono text-sm font-bold text-slate-700 dark:text-slate-200 w-12">{sched.time}</span>
                     <div className="flex gap-1 flex-1">
                       {sched.days.length === 0 ? (
-                        <span className="text-xs text-slate-400">매일</span>
+                        <span className="text-xs text-slate-400">{t("settings.schedEveryDay")}</span>
                       ) : sched.days.sort().map(d => (
                         <span key={d} className="text-[10px] px-1 py-0.5 rounded bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 font-semibold">
-                          {DAY_LABELS[d]}
+                          {dayLabels[d]}
                         </span>
                       ))}
                     </div>
@@ -937,7 +941,7 @@ export function SettingsModal({ initial, onSave, onClose }: Props) {
               />
               <div className="w-14 text-center">
                 <span className="text-lg font-bold text-pink-500">{settings.notif_max_count ?? 50}</span>
-                <span className="text-xs text-slate-400">개</span>
+                <span className="text-xs text-slate-400">{t("settings.notifCountUnit")}</span>
               </div>
             </div>
           </section>

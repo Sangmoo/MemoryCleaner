@@ -10,6 +10,7 @@ import clsx from "clsx";
 import type { ProcessInfo, KillPreset } from "../lib/types";
 import { api } from "../lib/api";
 import { toast } from "../lib/toast";
+import { useT } from "../lib/i18n";
 
 // ── 메모리 누수 감지 ────────────────────────────────────────────────────────
 // PID별 최근 메모리 측정값 추적 → 지속적 증가 시 누수 의심
@@ -59,6 +60,7 @@ function ContextMenu({
   onClose: () => void;
   onProtect: (name: string) => void;
 }) {
+  const t = useT();
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -77,33 +79,37 @@ function ContextMenu({
       try { await api.setProcessPriority(pid, level); ok++; }
       catch { fail++; }
     }
-    const label = level === "normal" ? "정상화" : level === "idle" ? "유휴" : "낮춤";
+    const label = level === "normal"
+      ? t("contextMenu.priorityNormalLabel")
+      : level === "idle"
+        ? t("contextMenu.priorityIdleLabel")
+        : t("contextMenu.priorityLowLabel");
     if (fail === 0) {
-      toast.success(`우선순위 ${label} 완료 (${ok}개)`, "프로세스 우선순위");
+      toast.success(t("contextMenu.priorityDone", label, ok), t("contextMenu.priorityTitle"));
     } else {
-      toast.warning(`우선순위 ${label}: ${ok}개 성공, ${fail}개 실패`, "프로세스 우선순위");
+      toast.warning(t("contextMenu.priorityPartial", label, ok, fail), t("contextMenu.priorityTitle"));
     }
   };
 
   const menuItems: Array<{ icon: React.ReactNode; label: string; onClick: () => void; danger?: boolean }> = [
     {
       icon: <ShieldPlus className="w-3.5 h-3.5 text-emerald-500" />,
-      label: "보호 목록에 추가",
+      label: t("contextMenu.protect"),
       onClick: () => { onClose(); onProtect(state.row.name); },
     },
     {
       icon: <GaugeCircle className="w-3.5 h-3.5 text-amber-500" />,
-      label: "CPU 우선순위 낮춤",
+      label: t("contextMenu.priorityLow"),
       onClick: () => setPriority("below_normal"),
     },
     {
       icon: <GaugeCircle className="w-3.5 h-3.5 text-red-400" />,
-      label: "CPU 우선순위 유휴",
+      label: t("contextMenu.priorityIdle"),
       onClick: () => setPriority("idle"),
     },
     {
       icon: <GaugeCircle className="w-3.5 h-3.5 text-slate-400" />,
-      label: "CPU 우선순위 정상화",
+      label: t("contextMenu.priorityNormal"),
       onClick: () => setPriority("normal"),
     },
   ];
@@ -199,6 +205,7 @@ interface RowProps {
 }
 
 const Row = ({ index, style, data }: RowProps) => {
+  const t = useT();
   const row = data.rows[index];
   const odd = index % 2 === 0;
 
@@ -274,7 +281,7 @@ const Row = ({ index, style, data }: RowProps) => {
             type="button"
             onClick={(e) => { e.stopPropagation(); data.onToggleExpand?.(row.key); }}
             className="flex-shrink-0 text-slate-400 hover:text-brand-500"
-            title={row.expanded ? "접기" : "펼치기"}
+            title={row.expanded ? t("process.collapseTree") : t("process.expandTree")}
           >
             {row.expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3 rotate-90" />}
           </button>
@@ -285,11 +292,11 @@ const Row = ({ index, style, data }: RowProps) => {
         {/* 누수 의심 배지 */}
         {row.leaking && (
           <span
-            title="메모리 사용량이 지속적으로 증가하는 중 (누수 의심)"
+            title={t("process.leakTooltip")}
             className="flex-shrink-0 inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400"
           >
             <TrendingUp className="w-2.5 h-2.5" />
-            누수?
+            {t("process.leak")}
           </span>
         )}
         {/* 그룹 배지 */}
@@ -303,7 +310,7 @@ const Row = ({ index, style, data }: RowProps) => {
           <button
             onClick={handleDetail}
             className="opacity-0 group-hover/name:opacity-60 hover:!opacity-100 transition-opacity flex-shrink-0 text-slate-400 hover:text-brand-500"
-            title="프로세스 상세 보기"
+            title={t("process.detailTooltip")}
           >
             <Info className="w-3.5 h-3.5" />
           </button>
@@ -337,7 +344,7 @@ const Row = ({ index, style, data }: RowProps) => {
           !row.is_system && !row.is_protected && row.safe_kill && "chip-rec",
           !row.is_system && !row.is_protected && !row.safe_kill && "chip-nor",
         )}>
-          {row.is_system ? "시스템" : row.is_protected ? "보호됨" : row.safe_kill ? "추천" : "일반"}
+          {row.is_system ? t("process.typeSystem") : row.is_protected ? t("process.typeProtected") : row.safe_kill ? t("process.typeRecommended") : t("process.typeNormal")}
         </span>
       </div>
     </div>
@@ -375,6 +382,7 @@ export function ProcessTable({
   processes, selected, onToggle, onDetail, onProtect, loading, error,
   cpuHistory, killPresets, onSelectPids,
 }: Props) {
+  const t = useT();
   const listRef = useRef<List>(null);
   const listContainerRef = useRef<HTMLDivElement>(null);
   const [listHeight, setListHeight] = useState(400);
@@ -633,11 +641,11 @@ export function ProcessTable({
       .filter(p => lowerNames.includes(p.name.toLowerCase()) && !p.is_system && !p.is_protected)
       .map(p => p.pid);
     if (matchPids.length === 0) {
-      toast.info(`매칭되는 프로세스 없음`, preset.name);
+      toast.info(t("process.noMatchPreset"), preset.name);
       return;
     }
     onSelectPids?.(matchPids);
-    toast.success(`${matchPids.length}개 프로세스 선택됨`, `${preset.icon} ${preset.name}`);
+    toast.success(t("process.presetSelected", matchPids.length), `${preset.icon} ${preset.name}`);
   };
 
   return (
@@ -648,7 +656,7 @@ export function ProcessTable({
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
           <input
             type="text"
-            placeholder="프로세스 검색…"
+            placeholder={t("process.searchPlaceholder")}
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500/40"
@@ -664,7 +672,7 @@ export function ProcessTable({
         {/* 그룹화 토글 */}
         <button
           onClick={enableGroup}
-          title={isGrouped ? "그룹화 해제" : "같은 이름 프로세스 그룹화"}
+          title={isGrouped ? t("process.groupOn") : t("process.groupOff")}
           disabled={isTree}
           className={clsx(
             "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
@@ -674,13 +682,13 @@ export function ProcessTable({
           )}
         >
           <Layers className="w-3.5 h-3.5" />
-          그룹화
+          {t("process.group")}
         </button>
 
         {/* 트리 토글 (기능 #11) */}
         <button
           onClick={enableTree}
-          title={isTree ? "트리 해제" : "부모-자식 트리 보기"}
+          title={isTree ? t("process.treeOn") : t("process.treeOff")}
           disabled={isGrouped}
           className={clsx(
             "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
@@ -690,7 +698,7 @@ export function ProcessTable({
           )}
         >
           <GitBranch className="w-3.5 h-3.5" />
-          트리
+          {t("process.tree")}
         </button>
 
         {/* 프리셋 드롭다운 (기능 #7) */}
@@ -699,10 +707,10 @@ export function ProcessTable({
             <button
               onClick={() => setShowPresets(v => !v)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-500 hover:text-brand-600 transition-colors"
-              title="빠른 Kill 프리셋"
+              title={t("process.presetsTitle")}
             >
               <Zap className="w-3.5 h-3.5" />
-              프리셋
+              {t("process.presets")}
               <ChevronDown className="w-3 h-3 opacity-70" />
             </button>
             {showPresets && (
@@ -730,25 +738,25 @@ export function ProcessTable({
       {/* 컬럼 헤더 */}
       <div className="flex items-center px-3 py-2 bg-slate-100/70 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">
         <div className="w-9 text-center">✓</div>
-        <SortHeader label="프로세스명" sortKey="name"        current={sortKey} dir={sortDir} onSort={handleSort} className="flex-1" />
-        <SortHeader label="PID"        sortKey="pid"         current={sortKey} dir={sortDir} onSort={handleSort} className="w-16 justify-end" />
-        <SortHeader label="CPU"        sortKey="cpu_percent" current={sortKey} dir={sortDir} onSort={handleSort} className="w-24 justify-end" />
-        <SortHeader label="메모리"      sortKey="mem_bytes"   current={sortKey} dir={sortDir} onSort={handleSort} className="w-24 justify-end" />
-        <div className="w-20 text-center">분류</div>
+        <SortHeader label={t("process.name")}   sortKey="name"        current={sortKey} dir={sortDir} onSort={handleSort} className="flex-1" />
+        <SortHeader label="PID"                  sortKey="pid"         current={sortKey} dir={sortDir} onSort={handleSort} className="w-16 justify-end" />
+        <SortHeader label="CPU"                  sortKey="cpu_percent" current={sortKey} dir={sortDir} onSort={handleSort} className="w-24 justify-end" />
+        <SortHeader label={t("process.memory")} sortKey="mem_bytes"   current={sortKey} dir={sortDir} onSort={handleSort} className="w-24 justify-end" />
+        <div className="w-20 text-center">{t("process.colClass")}</div>
       </div>
 
       {/* 목록 */}
       <div className="flex-1 min-h-0" ref={listContainerRef}>
         {error ? (
           <div className="p-8 text-center text-red-500 text-sm space-y-1">
-            <div className="font-semibold">불러오기 실패</div>
+            <div className="font-semibold">{t("process.loadFail")}</div>
             <div className="text-xs font-mono opacity-80 break-all">{error}</div>
           </div>
         ) : loading && displayRows.length === 0 ? (
-          <div className="p-8 text-center text-slate-400 text-sm">프로세스 목록을 불러오는 중…</div>
+          <div className="p-8 text-center text-slate-400 text-sm">{t("process.loadingList")}</div>
         ) : displayRows.length === 0 ? (
           <div className="p-8 text-center text-slate-400 text-sm">
-            {search ? `"${search}" 검색 결과 없음` : "표시할 프로세스가 없습니다."}
+            {search ? t("process.noResult", search) : t("process.empty")}
           </div>
         ) : (
           <List
@@ -772,7 +780,7 @@ export function ProcessTable({
       {isGrouped && (
         <div className="px-3 py-1.5 border-t border-slate-200 dark:border-slate-700 text-xs text-slate-400 flex items-center gap-1.5">
           <Layers className="w-3 h-3" />
-          그룹화 ON — {filtered.length}개 프로세스 → {displayRows.length}개 그룹
+          {t("process.groupStatus", filtered.length, displayRows.length)}
         </div>
       )}
 
