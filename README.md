@@ -1,8 +1,8 @@
-# Memory Cleaner v1.2.0
+# Memory Cleaner v1.2.2
 
 **Windows 전용 스마트 메모리 정리 도구** — Tauri 2 + React 18 + Rust
 
-[![Version](https://img.shields.io/badge/version-1.2.0-blue)](https://github.com/Sangmoo/MemoryCleaner/releases)
+[![Version](https://img.shields.io/badge/version-1.2.2-blue)](https://github.com/Sangmoo/MemoryCleaner/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-brightgreen)](https://github.com/Sangmoo/MemoryCleaner)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Build](https://github.com/Sangmoo/MemoryCleaner/actions/workflows/release.yml/badge.svg)](https://github.com/Sangmoo/MemoryCleaner/actions/workflows/release.yml)
@@ -76,7 +76,7 @@
 | **알림 센터 필터** | 전체 / 자동정리 / 메모리 / CPU 탭으로 알림 분류 |
 | **알림 최대 보관 개수** | 설정에서 슬라이더로 10~200개 범위 조절 |
 | **주간 리포트** | 7일마다 자동 정리 통계(횟수·확보 GB) 토스트 표시 |
-| **미니 모드** | 헤더 버튼 클릭 → 우하단 컴팩트 카드 (RAM%·CPU%·Quick Clean) |
+| **미니 모드** | 헤더 버튼 클릭 → 창을 280×265로 축소, 복원 시 이전 창 크기로 정확히 복귀 |
 | OS 트레이 알림 | RAM 임계값 도달 시 Windows 알림 센터로 푸시 |
 | About 창 | 버전·기술 스택·GitHub 소스코드·릴리스 링크 |
 | 업데이트 배너 | GitHub Releases API로 신규 버전 자동 감지 |
@@ -263,8 +263,8 @@ npm run tauri:build
 
 ```bash
 # 버전 태그 생성 & push → 빌드 자동 시작 (약 15~20분 소요)
-git tag v1.2.0
-git push origin v1.2.0
+git tag v1.2.2
+git push origin v1.2.2
 ```
 
 빌드 진행 상황: [GitHub Actions](https://github.com/Sangmoo/MemoryCleaner/actions)
@@ -272,6 +272,18 @@ git push origin v1.2.0
 ---
 
 ## 📦 릴리스 히스토리
+
+### v1.2.2 (2026-05-29)
+- 🐛 **업데이트 배너 동적 버전 체크** — `getVersion()` (Tauri App API)으로 설치된 실제 버전을 읽어 비교. 하드코딩 제거로 이후 릴리스에서 배너 오표시 없음
+- 🐛 **About 창 버전 동적 표시** — 동일하게 `getVersion()` 사용, 항상 정확한 버전 표시
+- 🐛 **미니 모드 창 리사이즈 순서 수정** — 창 축소 완료 후 미니 UI 전환 (이전: UI 먼저 → 창이 큰 채로 미니 카드가 보이던 현상 수정)
+- 🐛 **미니 모드 복원 크기 저장** — 진입 직전 창 크기를 논리 픽셀로 저장, 복원 시 정확히 원래 크기로 되돌림
+
+### v1.2.1 (2026-05-29)
+- 🐛 **알림센터 오작동 수정** — `onToggle` ref 패턴 도입으로 다크모드·설정 등 다른 버튼 클릭 시 알림센터가 열리던 버그 수정
+- 🐛 **알림센터 setTimeout 제거** — mousedown 리스너 등록 공백으로 인한 열림/닫힘 루프 버그 수정
+- 🐛 **버전 표기 수정** — `tauri.conf.json` / `package.json` 버전 1.0.0 → 1.2.x 동기화
+- 🐛 **미니 모드 실제 창 리사이즈** — 오버레이 방식에서 Tauri window API 기반 실제 창 축소로 전환
 
 ### v1.2.0 (2026-05-28)
 - ✅ **알림 최대 보관 개수 설정** — 슬라이더 10~200개 (기본 50), 슬라이딩 윈도우 방식
