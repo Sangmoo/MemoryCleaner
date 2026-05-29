@@ -15,10 +15,21 @@
 
 | 파일 | 설명 |
 |------|------|
-| `Memory Cleaner_x.x.x_x64-setup.exe` | NSIS 설치 관리자 **(권장)** |
-| `Memory Cleaner_x.x.x_x64_en-US.msi` | Windows Installer |
+| `Memory.Cleaner_x.x.x_x64-setup.exe` | NSIS 설치 관리자 **(권장)** |
+| `Memory.Cleaner_x.x.x_x64_en-US.msi` | Windows Installer |
 
 > Windows 10 / 11 x64 전용입니다.
+
+### ⚠️ Windows Defender SmartScreen 경고 해결
+
+설치 시 **"Windows의 PC 보호"** 경고창이 표시될 수 있습니다. 이는 상용 코드 서명 인증서가 없는 오픈소스 앱에서 정상적으로 발생하는 현상이며, 악성 소프트웨어가 아닙니다.
+
+**설치 방법:**
+
+1. 경고창에서 **"추가 정보"** 클릭
+2. **"실행"** 버튼 클릭
+
+> 소스코드는 이 저장소에서 직접 확인할 수 있습니다. GitHub Actions로 빌드되며 빌드 로그도 공개되어 있습니다.
 
 ---
 
