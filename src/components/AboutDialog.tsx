@@ -1,11 +1,12 @@
+import { useEffect, useState } from "react";
 import { X, Zap, Github, ExternalLink, Heart } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { getVersion } from "@tauri-apps/api/app";
 
 interface Props {
   onClose: () => void;
 }
 
-const VERSION = "1.2.0";
 const GITHUB_URL = "https://github.com/Sangmoo/MemoryCleaner";
 const RELEASES_URL = `${GITHUB_URL}/releases`;
 
@@ -19,6 +20,12 @@ const STACK = [
 ];
 
 export function AboutDialog({ onClose }: Props) {
+  // 설치된 앱 버전을 Tauri API로 동적으로 읽음 (하드코딩 불필요)
+  const [version, setVersion] = useState("...");
+  useEffect(() => {
+    getVersion().then(setVersion).catch(() => setVersion("1.2.2"));
+  }, []);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in"
@@ -35,7 +42,7 @@ export function AboutDialog({ onClose }: Props) {
           </div>
           <div className="text-center text-white">
             <h2 className="text-lg font-bold leading-tight">Memory Cleaner</h2>
-            <div className="text-sm opacity-80 mt-0.5">v{VERSION}</div>
+            <div className="text-sm opacity-80 mt-0.5">v{version}</div>
           </div>
         </div>
 

@@ -130,31 +130,41 @@ function AppInner() {
   const [dark, setDark] = useDarkMode(settings.theme);
   const [showSettings, setShowSettings] = useState(false);
   const [miniMode, setMiniMode] = useState(false);
-
-  // 미니 모드: 실제 창 크기 변경 (기능 #5)
+  // 미니 모드 진입 직전 창 크기를 저장 → 복원 시 정확히 되돌림
+  const restoreSizeRef = useRef<{ w: number; h: number } | null>(null);
   const MINI_W = 280, MINI_H = 265;
-  const FULL_W = 980, FULL_H = 760;
 
   const enterMiniMode = async () => {
+    if (isTauri) {
+      try {
+        const win = getCurrentWindow();
+        // ① 현재 창 크기를 논리 픽셀로 저장
+        const [physSize, sf] = await Promise.all([win.innerSize(), win.scaleFactor()]);
+        restoreSizeRef.current = {
+          w: Math.round(physSize.width / sf),
+          h: Math.round(physSize.height / sf),
+        };
+        // ② 최솟값 일시 해제 → 창 축소 → 리사이즈 잠금
+        await win.setMinSize(new LogicalSize(1, 1));
+        await win.setSize(new LogicalSize(MINI_W, MINI_H));
+        await win.setResizable(false);
+      } catch (e) { console.error(e); }
+    }
+    // ③ 창이 줄어든 뒤 UI를 미니 카드로 전환
     setMiniMode(true);
-    if (!isTauri) return;
-    try {
-      const win = getCurrentWindow();
-      // 최솟값을 일시 해제 후 리사이즈
-      await win.setMinSize(new LogicalSize(100, 100));
-      await win.setSize(new LogicalSize(MINI_W, MINI_H));
-      await win.setResizable(false);
-    } catch (e) { console.error(e); }
   };
 
   const exitMiniMode = async () => {
+    // UI 먼저 복원 후 창 확장 (자연스럽게 내용이 채워지며 커짐)
     setMiniMode(false);
     if (!isTauri) return;
     try {
       const win = getCurrentWindow();
+      const r = restoreSizeRef.current;
       await win.setResizable(true);
       await win.setMinSize(new LogicalSize(760, 580));
-      await win.setSize(new LogicalSize(FULL_W, FULL_H));
+      // 저장된 진입 전 크기로 복원 (없으면 기본값 980×760)
+      await win.setSize(new LogicalSize(r?.w ?? 980, r?.h ?? 760));
     } catch (e) { console.error(e); }
   };
 

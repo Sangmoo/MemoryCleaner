@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { X, Download, ExternalLink } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { getVersion } from "@tauri-apps/api/app";
 
-const CURRENT_VERSION = "1.2.0";
+// CURRENT_VERSION을 하드코딩하지 않고 Tauri API로 실제 설치 버전을 읽어 비교
+// → 릴리스마다 이 파일을 수정할 필요 없음
+
 const REPO = "Sangmoo/MemoryCleaner";
 const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
-const RELEASES_PAGE = `https://github.com/${REPO}/releases/latest`;
 
 interface GithubRelease {
   tag_name: string;
@@ -31,14 +33,18 @@ export function UpdateBanner() {
     const key = "mc-update-dismissed";
     if (sessionStorage.getItem(key)) { setDismissed(true); return; }
 
-    fetch(RELEASES_URL, { headers: { Accept: "application/vnd.github+json" } })
-      .then(r => r.json())
-      .then((data: GithubRelease) => {
-        if (data.tag_name && semverGt(data.tag_name, CURRENT_VERSION)) {
-          setRelease(data);
-        }
-      })
-      .catch(() => {}); // 네트워크 오류 시 조용히 무시
+    // 설치된 앱 버전을 Tauri API로 읽은 뒤 GitHub Releases와 비교
+    getVersion()
+      .then(currentVer =>
+        fetch(RELEASES_URL, { headers: { Accept: "application/vnd.github+json" } })
+          .then(r => r.json())
+          .then((data: GithubRelease) => {
+            if (data.tag_name && semverGt(data.tag_name, currentVer)) {
+              setRelease(data);
+            }
+          })
+      )
+      .catch(() => {}); // 네트워크 오류 또는 비-Tauri 환경 시 조용히 무시
   }, []);
 
   const dismiss = () => {
