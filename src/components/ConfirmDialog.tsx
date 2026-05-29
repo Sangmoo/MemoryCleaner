@@ -1,4 +1,5 @@
 import { AlertTriangle, X } from "lucide-react";
+import { useT } from "../lib/i18n";
 
 interface Props {
   count: number;
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export function ConfirmDialog({ count, names, estimatedMb, onConfirm, onCancel }: Props) {
+  const t = useT();
   const preview = names.slice(0, 12);
   const rest = names.length - preview.length;
 
@@ -24,7 +26,7 @@ export function ConfirmDialog({ count, names, estimatedMb, onConfirm, onCancel }
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-6 h-6 text-amber-500" />
-            <h3 className="text-lg font-bold">프로세스 종료 확인</h3>
+            <h3 className="text-lg font-bold">{t("confirm.title")}</h3>
           </div>
           <button onClick={onCancel} className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700">
             <X className="w-4 h-4 text-slate-500" />
@@ -32,8 +34,7 @@ export function ConfirmDialog({ count, names, estimatedMb, onConfirm, onCancel }
         </div>
 
         <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
-          <span className="font-semibold text-slate-900 dark:text-white">{count}개 </span>
-          프로세스를 종료합니다. 예상 회수:{" "}
+          <span className="font-semibold text-slate-900 dark:text-white">{t("confirm.body", count)} </span>
           <span className="font-semibold text-emerald-600 dark:text-emerald-400">
             {estimatedMb < 1024
               ? `${estimatedMb.toFixed(0)} MB`
@@ -48,16 +49,16 @@ export function ConfirmDialog({ count, names, estimatedMb, onConfirm, onCancel }
             </div>
           ))}
           {rest > 0 && (
-            <div className="py-0.5 text-slate-400 italic">… 외 {rest}개</div>
+            <div className="py-0.5 text-slate-400 italic">{t("confirm.more", rest)}</div>
           )}
         </div>
 
         <div className="flex gap-2">
           <button onClick={onCancel} className="btn btn-ghost flex-1">
-            취소
+            {t("common.cancel")}
           </button>
           <button onClick={onConfirm} className="btn btn-danger flex-1">
-            종료 실행
+            {t("confirm.ok")}
           </button>
         </div>
       </div>

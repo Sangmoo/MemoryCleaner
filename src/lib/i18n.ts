@@ -219,6 +219,84 @@ const translations: Record<Locale, Record<string, string>> = {
     "common.error": "오류",
     "common.ok": "확인",
     "common.cancel": "취소",
+
+    // gauge
+    "gauge.title": "RAM 사용 현황",
+    "gauge.inUse": "{0}% 사용 중",
+    "gauge.free": "{0} GB 남음",
+
+    // graph
+    "graph.collecting": "데이터 수집 중…",
+    "graph.min": "최소",
+    "graph.max": "최대",
+
+    // confirm dialog
+    "confirm.title": "프로세스 종료 확인",
+    "confirm.body": "{0}개 프로세스를 종료합니다. 예상 회수:",
+    "confirm.more": "… 외 {0}개",
+    "confirm.ok": "종료 실행",
+
+    // result dialog
+    "result.title": "Kill 완료",
+    "result.freed": "메모리 확보",
+    "result.done": "완료: {0}개 종료",
+    "result.failed": "{0}개 실패",
+    "result.failDetail": "실패",
+
+    // history (extra)
+    "history.confirmClear": "히스토리를 모두 삭제하시겠습니까?",
+    "history.csvFail": "CSV 내보내기 실패",
+    "history.count": "종료 히스토리 ({0}건)",
+    "history.refresh": "새로고침",
+    "history.colTime": "시간",
+    "history.colProcess": "프로세스",
+    "history.colMemory": "메모리",
+    "history.colResult": "결과",
+    "history.colTrigger": "트리거",
+
+    // process toolbar / stats bar
+    "process.statsBar": "{0}개 · 추천 {1}개 · 보호 {2}개",
+    "process.nextRefresh": "다음 자동 새로고침까지 남은 시간",
+    "process.selected": "선택",
+    "process.countUnit": "개",
+    "process.estimatedFree": "예상 확보",
+    "process.typeSystem": "시스템",
+    "process.typeProtected": "보호됨",
+    "process.typeRecommended": "추천",
+    "process.typeNormal": "일반",
+    "process.ramUsage": "RAM 사용률",
+
+    // toast messages
+    "toast.alreadyProtected": "이미 보호 목록에 있습니다",
+    "toast.addedProtected": "보호 목록에 추가됨",
+    "toast.addProtectedFail": "보호 목록 추가 실패",
+    "toast.killError": "프로세스 종료 오류",
+    "toast.compressResult": "{0}개 성공, {1}개 실패",
+    "toast.compressDone": "메모리 압축 완료",
+    "toast.compressError": "메모리 압축 오류",
+    "toast.flushResult": "{0}개 프로세스 압축 완료",
+    "toast.flushNotifBody": "{0}개 압축 완료",
+    "toast.flushError": "RAM 플러시 오류",
+    "toast.noRecommended": "추천 프로세스 없음",
+    "toast.noRecommendedHint": "임계값을 낮추거나 잠시 후 다시 시도하세요.",
+    "toast.quickCleanError": "Quick Clean 오류",
+    "toast.autoCleanResult": "{0}개 프로세스 종료",
+
+    // tray hint
+    "tray.runningHint": "창을 닫아도 트레이에서 계속 실행됩니다.",
+
+    // onboarding
+    "onboarding.step1.title": "Memory Cleaner에 오신 것을 환영합니다!",
+    "onboarding.step1.desc": "Windows 메모리를 스마트하게 관리합니다. 프로세스를 분석하고, 불필요한 메모리를 확보해 PC를 쾌적하게 유지하세요.",
+    "onboarding.step2.title": "Quick Clean으로 즉시 정리",
+    "onboarding.step2.desc": "헤더의 Quick Clean 버튼 또는 Ctrl+Q를 누르면 추천 프로세스를 한 번에 정리합니다. Kill하기 안전한 프로세스만 자동 선별됩니다.",
+    "onboarding.step3.title": "자동 정리 & 알림 설정",
+    "onboarding.step3.desc": "설정(⚙)에서 메모리 임계값을 지정하면 백그라운드에서 자동으로 정리합니다. 게임·업무·절전 모드 프리셋으로 빠르게 전환하세요.",
+    "onboarding.step4.title": "인사이트로 패턴 파악",
+    "onboarding.step4.desc": "인사이트 탭에서 메모리 확보 통계, 자주 종료된 프로세스 Top 5, 7일 추이를 확인하고 PC 상태를 한눈에 파악하세요.",
+    "onboarding.prev": "이전",
+    "onboarding.next": "다음",
+    "onboarding.start": "시작하기",
   },
 
   en: {
@@ -437,6 +515,84 @@ const translations: Record<Locale, Record<string, string>> = {
     "common.error": "Error",
     "common.ok": "OK",
     "common.cancel": "Cancel",
+
+    // gauge
+    "gauge.title": "RAM Usage",
+    "gauge.inUse": "{0}% in use",
+    "gauge.free": "{0} GB free",
+
+    // graph
+    "graph.collecting": "Collecting data…",
+    "graph.min": "Min",
+    "graph.max": "Max",
+
+    // confirm dialog
+    "confirm.title": "Confirm Kill",
+    "confirm.body": "Kill {0} process(es). Est. freed:",
+    "confirm.more": "… and {0} more",
+    "confirm.ok": "Kill Now",
+
+    // result dialog
+    "result.title": "Kill Complete",
+    "result.freed": "Memory Freed",
+    "result.done": "Done: {0} killed",
+    "result.failed": "{0} failed",
+    "result.failDetail": "Failed",
+
+    // history (extra)
+    "history.confirmClear": "Delete all history?",
+    "history.csvFail": "CSV export failed",
+    "history.count": "Kill History ({0})",
+    "history.refresh": "Refresh",
+    "history.colTime": "Time",
+    "history.colProcess": "Process",
+    "history.colMemory": "Memory",
+    "history.colResult": "Result",
+    "history.colTrigger": "Trigger",
+
+    // process toolbar / stats bar
+    "process.statsBar": "{0} · Rec {1} · Prot {2}",
+    "process.nextRefresh": "Time until next auto-refresh",
+    "process.selected": "Selected",
+    "process.countUnit": "",
+    "process.estimatedFree": "Est. Free",
+    "process.typeSystem": "System",
+    "process.typeProtected": "Protected",
+    "process.typeRecommended": "Recommended",
+    "process.typeNormal": "Normal",
+    "process.ramUsage": "RAM Usage",
+
+    // toast messages
+    "toast.alreadyProtected": "Already in protected list",
+    "toast.addedProtected": "Added to protected list",
+    "toast.addProtectedFail": "Failed to add to protected list",
+    "toast.killError": "Process kill error",
+    "toast.compressResult": "{0} succeeded, {1} failed",
+    "toast.compressDone": "Memory compression done",
+    "toast.compressError": "Memory compression error",
+    "toast.flushResult": "{0} processes flushed",
+    "toast.flushNotifBody": "{0} compressed",
+    "toast.flushError": "RAM flush error",
+    "toast.noRecommended": "No recommended processes",
+    "toast.noRecommendedHint": "Lower the threshold or try again later.",
+    "toast.quickCleanError": "Quick Clean error",
+    "toast.autoCleanResult": "{0} processes killed",
+
+    // tray hint
+    "tray.runningHint": "The app keeps running in the tray when closed.",
+
+    // onboarding
+    "onboarding.step1.title": "Welcome to Memory Cleaner!",
+    "onboarding.step1.desc": "Smart Windows memory management. Analyze processes and reclaim memory to keep your PC running smoothly.",
+    "onboarding.step2.title": "Instant clean with Quick Clean",
+    "onboarding.step2.desc": "Click Quick Clean in the header or press Ctrl+Q to clean recommended processes in one go. Only safe-to-kill processes are auto-selected.",
+    "onboarding.step3.title": "Auto Clean & Notifications",
+    "onboarding.step3.desc": "Set a memory threshold in Settings (⚙) to auto-clean in the background. Switch between Gaming, Work, and Power Saver presets quickly.",
+    "onboarding.step4.title": "Track patterns with Insights",
+    "onboarding.step4.desc": "The Insights tab shows memory stats, Top 5 frequently killed processes, and a 7-day trend to understand your PC's health at a glance.",
+    "onboarding.prev": "Previous",
+    "onboarding.next": "Next",
+    "onboarding.start": "Get Started",
   },
 
   ja: {
@@ -655,6 +811,84 @@ const translations: Record<Locale, Record<string, string>> = {
     "common.error": "エラー",
     "common.ok": "OK",
     "common.cancel": "キャンセル",
+
+    // gauge
+    "gauge.title": "RAM使用状況",
+    "gauge.inUse": "{0}% 使用中",
+    "gauge.free": "{0} GB 空き",
+
+    // graph
+    "graph.collecting": "データ収集中…",
+    "graph.min": "最小",
+    "graph.max": "最大",
+
+    // confirm dialog
+    "confirm.title": "プロセス終了の確認",
+    "confirm.body": "{0}件のプロセスを終了します。解放見込み:",
+    "confirm.more": "… 他 {0}件",
+    "confirm.ok": "今すぐ終了",
+
+    // result dialog
+    "result.title": "Kill完了",
+    "result.freed": "メモリ解放",
+    "result.done": "完了: {0}件終了",
+    "result.failed": "{0}件失敗",
+    "result.failDetail": "失敗",
+
+    // history (extra)
+    "history.confirmClear": "履歴をすべて削除しますか？",
+    "history.csvFail": "CSVエクスポート失敗",
+    "history.count": "終了履歴 ({0}件)",
+    "history.refresh": "更新",
+    "history.colTime": "時間",
+    "history.colProcess": "プロセス",
+    "history.colMemory": "メモリ",
+    "history.colResult": "結果",
+    "history.colTrigger": "トリガー",
+
+    // process toolbar / stats bar
+    "process.statsBar": "{0}件 · 推奨 {1}件 · 保護 {2}件",
+    "process.nextRefresh": "次の自動更新まで",
+    "process.selected": "選択",
+    "process.countUnit": "件",
+    "process.estimatedFree": "解放見込み",
+    "process.typeSystem": "システム",
+    "process.typeProtected": "保護済み",
+    "process.typeRecommended": "推奨",
+    "process.typeNormal": "通常",
+    "process.ramUsage": "RAM使用率",
+
+    // toast messages
+    "toast.alreadyProtected": "既に保護リストにあります",
+    "toast.addedProtected": "保護リストに追加しました",
+    "toast.addProtectedFail": "保護リストへの追加に失敗しました",
+    "toast.killError": "プロセス終了エラー",
+    "toast.compressResult": "{0}件成功、{1}件失敗",
+    "toast.compressDone": "メモリ圧縮完了",
+    "toast.compressError": "メモリ圧縮エラー",
+    "toast.flushResult": "{0}件フラッシュ完了",
+    "toast.flushNotifBody": "{0}件圧縮完了",
+    "toast.flushError": "RAMフラッシュエラー",
+    "toast.noRecommended": "推奨プロセスなし",
+    "toast.noRecommendedHint": "しきい値を下げるか、後で再試行してください。",
+    "toast.quickCleanError": "クイッククリーンエラー",
+    "toast.autoCleanResult": "{0}件のプロセスを終了しました",
+
+    // tray hint
+    "tray.runningHint": "ウィンドウを閉じてもトレイで実行し続けます。",
+
+    // onboarding
+    "onboarding.step1.title": "Memory Cleanerへようこそ！",
+    "onboarding.step1.desc": "Windowsのメモリをスマートに管理します。プロセスを分析し、不要なメモリを解放してPCを快適に保ちましょう。",
+    "onboarding.step2.title": "Quick Cleanで即座にクリーン",
+    "onboarding.step2.desc": "ヘッダーのQuick CleanボタンまたはCtrl+Qを押すと、推奨プロセスを一括クリーンします。安全に終了できるプロセスのみ自動選択されます。",
+    "onboarding.step3.title": "自動クリーン＆通知設定",
+    "onboarding.step3.desc": "設定(⚙)でメモリしきい値を設定すると、バックグラウンドで自動クリーンします。ゲーム・業務・省電力プリセットで素早く切り替えられます。",
+    "onboarding.step4.title": "インサイトでパターンを把握",
+    "onboarding.step4.desc": "インサイトタブでメモリ解放統計、よく終了されるプロセスTop 5、7日間の推移を確認し、PCの状態を一目で把握できます。",
+    "onboarding.prev": "前へ",
+    "onboarding.next": "次へ",
+    "onboarding.start": "始める",
   },
 };
 

@@ -1,8 +1,8 @@
-# Memory Cleaner v1.2.2
+# Memory Cleaner v1.2.3
 
 **Windows 전용 스마트 메모리 정리 도구** — Tauri 2 + React 18 + Rust
 
-[![Version](https://img.shields.io/badge/version-1.2.2-blue)](https://github.com/Sangmoo/MemoryCleaner/releases)
+[![Version](https://img.shields.io/badge/version-1.2.3-blue)](https://github.com/Sangmoo/MemoryCleaner/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-brightgreen)](https://github.com/Sangmoo/MemoryCleaner)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Build](https://github.com/Sangmoo/MemoryCleaner/actions/workflows/release.yml/badge.svg)](https://github.com/Sangmoo/MemoryCleaner/actions/workflows/release.yml)
@@ -272,6 +272,11 @@ git push origin v1.2.2
 ---
 
 ## 📦 릴리스 히스토리
+
+### v1.2.3 (2026-05-29)
+- 🐛 **테마 색상 즉시 반영** — `tailwind.config.js`의 brand 컬러를 CSS 변수(`var(--color-brand-*)`) 참조로 전환. 저장 시 `applyAccentColor()`가 변수를 업데이트하면 모든 Tailwind 클래스에 실시간 반영. `index.css`에 초기 기본값(Indigo) 추가로 JS 로드 전 깜빡임 없음
+- 🐛 **언어 변경 즉시 전체 UI 반영** — 설정 저장 시 `I18nProvider`의 locale state(`setLocale`)를 즉시 업데이트. 이전에는 앱 재시작 전까지 한국어로 고정되던 문제 수정
+- ✅ **i18n 완전성 강화** — `MemoryGauge`, `MemoryGraph`, `ConfirmDialog`, `ResultDialog`, `HistoryPanel`, `NotificationCenter`, `AboutDialog`, `OnboardingTour` 8개 컴포넌트의 하드코딩된 한국어 문자열 약 60개를 `useT()` 기반 번역으로 전환. 언어 전환 시 앱 전체 텍스트 동시 변경
 
 ### v1.2.2 (2026-05-29)
 - 🐛 **업데이트 배너 동적 버전 체크** — `getVersion()` (Tauri App API)으로 설치된 실제 버전을 읽어 비교. 하드코딩 제거로 이후 릴리스에서 배너 오표시 없음

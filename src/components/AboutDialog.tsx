@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { X, Zap, Github, ExternalLink, Heart } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
+import { useT } from "../lib/i18n";
 
 interface Props {
   onClose: () => void;
@@ -20,6 +21,7 @@ const STACK = [
 ];
 
 export function AboutDialog({ onClose }: Props) {
+  const t = useT();
   // 설치된 앱 버전을 Tauri API로 동적으로 읽음 (하드코딩 불필요)
   const [version, setVersion] = useState("...");
   useEffect(() => {
@@ -48,12 +50,12 @@ export function AboutDialog({ onClose }: Props) {
 
         <div className="px-5 py-4 space-y-4">
           <p className="text-sm text-slate-500 dark:text-slate-400 text-center leading-relaxed">
-            Windows 메모리를 스마트하게 관리하는 오픈소스 데스크탑 앱입니다.
+            {t("about.desc")}
           </p>
 
           {/* 기술 스택 */}
           <div>
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">기술 스택</div>
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">{t("about.techStack")}</div>
             <div className="flex flex-wrap gap-1.5">
               {STACK.map(s => (
                 <span key={s.label} className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.color}`}>
@@ -71,7 +73,7 @@ export function AboutDialog({ onClose }: Props) {
                 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm text-slate-700 dark:text-slate-200 text-left w-full"
             >
               <Github className="w-4 h-4 flex-shrink-0" />
-              <span className="flex-1 font-medium">GitHub 소스코드</span>
+              <span className="flex-1 font-medium">{t("about.sourceCode")}</span>
               <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
             </button>
             <button
@@ -80,7 +82,7 @@ export function AboutDialog({ onClose }: Props) {
                 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm text-slate-700 dark:text-slate-200 text-left w-full"
             >
               <Zap className="w-4 h-4 flex-shrink-0 text-brand-500" />
-              <span className="flex-1 font-medium">릴리스 다운로드</span>
+              <span className="flex-1 font-medium">{t("about.download")}</span>
               <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
             </button>
           </div>
@@ -90,12 +92,12 @@ export function AboutDialog({ onClose }: Props) {
             <span>MIT License</span>
             <span>·</span>
             <Heart className="w-3 h-3 text-red-400" fill="currentColor" />
-            <span>Made with Rust & React</span>
+            <span>{t("about.license")}</span>
           </div>
         </div>
 
         <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-700">
-          <button onClick={onClose} className="btn btn-secondary w-full">닫기</button>
+          <button onClick={onClose} className="btn btn-secondary w-full">{t("about.close")}</button>
         </div>
 
         <button

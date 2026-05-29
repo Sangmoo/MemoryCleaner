@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Accent 색상 CSS 변수 기본값 (Indigo) ──────────────────────────────────
+   applyAccentColor()가 호출되기 전 초기 렌더에도 브랜드 색상이 올바르게 표시됨.
+   값 형식: raw HSL 숫자(hsl() 래퍼 없음) → Tailwind config의 hsl(var(...))와 호환.
+   ──────────────────────────────────────────────────────────────────────── */
+:root {
+  --color-brand-50:  238 100% 97%;
+  --color-brand-100: 239 84% 92%;
+  --color-brand-400: 234 89% 65%;
+  --color-brand-500: 239 84% 60%;
+  --color-brand-600: 243 75% 55%;
+  --color-brand-700: 245 58% 48%;
+  --color-brand-900: 244 47% 30%;
+}
+
 @layer base {
   html, body, #root {
     @apply h-full m-0 p-0;

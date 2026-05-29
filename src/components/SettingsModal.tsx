@@ -19,13 +19,15 @@ export const ACCENT_COLORS: Record<string, { name: string; hsl500: string; hsl60
 export function applyAccentColor(color: string) {
   const c = ACCENT_COLORS[color] ?? ACCENT_COLORS.indigo;
   const root = document.documentElement;
-  root.style.setProperty("--color-brand-50",  `hsl(${c.hsl50})`);
-  root.style.setProperty("--color-brand-100", `hsl(${c.hsl100})`);
-  root.style.setProperty("--color-brand-400", `hsl(${c.hsl400})`);
-  root.style.setProperty("--color-brand-500", `hsl(${c.hsl500})`);
-  root.style.setProperty("--color-brand-600", `hsl(${c.hsl600})`);
-  root.style.setProperty("--color-brand-700", `hsl(${c.hsl700})`);
-  root.style.setProperty("--color-brand-900", `hsl(${c.hsl900})`);
+  // raw HSL 값(hsl() 래퍼 없이)으로 저장 →
+  // tailwind.config.js의 hsl(var(--color-brand-*) / opacity) 패턴과 호환
+  root.style.setProperty("--color-brand-50",  c.hsl50);
+  root.style.setProperty("--color-brand-100", c.hsl100);
+  root.style.setProperty("--color-brand-400", c.hsl400);
+  root.style.setProperty("--color-brand-500", c.hsl500);
+  root.style.setProperty("--color-brand-600", c.hsl600);
+  root.style.setProperty("--color-brand-700", c.hsl700);
+  root.style.setProperty("--color-brand-900", c.hsl900);
 }
 
 interface Props {

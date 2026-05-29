@@ -1,5 +1,6 @@
 import { Activity } from "lucide-react";
 import type { MemorySnapshot } from "../lib/types";
+import { useT } from "../lib/i18n";
 
 interface Props {
   snap: MemorySnapshot | null;
@@ -12,6 +13,8 @@ function barColor(pct: number) {
 }
 
 export function MemoryGauge({ snap }: Props) {
+  const t = useT();
+
   if (!snap) {
     return (
       <div className="card p-5">
@@ -29,7 +32,7 @@ export function MemoryGauge({ snap }: Props) {
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-brand-600 dark:text-brand-500" />
           <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-            RAM 사용 현황
+            {t("gauge.title")}
           </h2>
         </div>
         <div className="font-mono text-sm text-slate-600 dark:text-slate-400">
@@ -49,8 +52,8 @@ export function MemoryGauge({ snap }: Props) {
       </div>
 
       <div className="flex justify-between mt-2 text-xs text-slate-500 dark:text-slate-400">
-        <span>{pct.toFixed(1)}% 사용 중</span>
-        <span>{snap.available_gb.toFixed(1)} GB 남음</span>
+        <span>{t("gauge.inUse", pct.toFixed(1))}</span>
+        <span>{t("gauge.free", snap.available_gb.toFixed(1))}</span>
       </div>
     </div>
   );

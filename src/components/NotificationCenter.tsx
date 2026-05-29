@@ -49,19 +49,20 @@ const TYPE_CFG: Record<NotifType, {
 // 기능 11: 필터 탭
 type FilterType = "all" | "auto_clean" | "mem_warn" | "cpu_spike";
 
-function fmtTime(d: Date) {
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1)  return "방금";
-  if (diffMin < 60) return `${diffMin}분 전`;
-  const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24)   return `${diffH}시간 전`;
-  return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
-}
-
 export function NotificationCenter({ notifs, open, onToggle, onRead, onClear, maxCount = 50 }: Props) {
   const t = useT();
+
+  // 시간 포맷: t()를 사용해 현재 언어로 출력
+  const fmtTime = (d: Date) => {
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1)  return t("time.justNow");
+    if (diffMin < 60) return t("time.minsAgo", diffMin);
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24)   return t("time.hoursAgo", diffH);
+    return d.toLocaleDateString(undefined, { month: "2-digit", day: "2-digit" });
+  };
   // bellRef: 벨 버튼 영역, dropdownRef: createPortal로 렌더된 드롭다운 패널
   // 두 ref 모두 체크해야 패널 내부 클릭이 "외부 클릭"으로 오인되지 않음
   const bellRef = useRef<HTMLDivElement>(null);

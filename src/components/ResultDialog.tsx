@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, X, AlertCircle, ArrowRight, TrendingDown } from "lucide-react";
 import clsx from "clsx";
 import type { RecoveryReport } from "../lib/types";
+import { useT } from "../lib/i18n";
 
 interface Props {
   report: RecoveryReport;
@@ -38,6 +39,7 @@ function Gauge({ percent, label, animated }: { percent: number; label: string; a
 }
 
 export function ResultDialog({ report, onClose }: Props) {
+  const t = useT();
   const success = report.results.filter(r => r.success).length;
   const fail = report.results.length - success;
   const recovered = report.recovered_gb;
@@ -46,8 +48,8 @@ export function ResultDialog({ report, onClose }: Props) {
   // before → after 게이지 애니메이션
   const [animatedAfter, setAnimatedAfter] = useState(report.before_percent);
   useEffect(() => {
-    const t = setTimeout(() => setAnimatedAfter(report.after_percent), 200);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setAnimatedAfter(report.after_percent), 200);
+    return () => clearTimeout(timer);
   }, [report.after_percent]);
 
   return (
@@ -62,7 +64,7 @@ export function ResultDialog({ report, onClose }: Props) {
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-6 h-6 text-emerald-500" />
-            <h3 className="text-lg font-bold">Kill 완료</h3>
+            <h3 className="text-lg font-bold">{t("result.title")}</h3>
           </div>
           <button onClick={onClose} className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700">
             <X className="w-4 h-4 text-slate-500" />
@@ -93,7 +95,7 @@ export function ResultDialog({ report, onClose }: Props) {
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-slate-500 dark:text-slate-400">메모리 확보</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">{t("result.freed")}</div>
             <div
               className={clsx(
                 "text-2xl font-bold font-mono tabular-nums",
@@ -110,16 +112,16 @@ export function ResultDialog({ report, onClose }: Props) {
         </div>
 
         <div className="text-sm text-slate-600 dark:text-slate-300">
-          <span className="font-medium">완료:</span> {success}개 종료
+          <span className="font-medium">{t("result.done", success)}</span>
           {fail > 0 && (
-            <>, <span className="text-rose-600">{fail}개 실패</span></>
+            <>, <span className="text-rose-600">{t("result.failed", fail)}</span></>
           )}
         </div>
 
         {fail > 0 && (
           <div className="mt-3 p-3 rounded bg-rose-50 dark:bg-rose-900/20 text-xs text-rose-700 dark:text-rose-300 max-h-32 overflow-y-auto">
             <div className="flex items-center gap-1.5 font-medium mb-1.5">
-              <AlertCircle className="w-3.5 h-3.5" /> 실패
+              <AlertCircle className="w-3.5 h-3.5" /> {t("result.failDetail")}
             </div>
             {report.results
               .filter(r => !r.success)
@@ -132,7 +134,7 @@ export function ResultDialog({ report, onClose }: Props) {
         )}
 
         <button onClick={onClose} className="btn btn-primary w-full mt-5">
-          확인
+          {t("common.ok")}
         </button>
       </div>
     </div>

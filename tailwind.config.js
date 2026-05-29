@@ -1,4 +1,12 @@
 /** @type {import('tailwindcss').Config} */
+
+// CSS 변수(--color-brand-*)를 Tailwind 컬러로 연결하는 헬퍼.
+// opacityValue를 함께 받아 bg-brand-600/10 같은 불투명도 모디파이어도 동작함.
+const v = (varName) => ({ opacityValue }) =>
+  opacityValue !== undefined
+    ? `hsl(var(${varName}) / ${opacityValue})`
+    : `hsl(var(${varName}))`;
+
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   darkMode: "class",
@@ -6,11 +14,13 @@ export default {
     extend: {
       colors: {
         brand: {
-          50:  "#eef4ff",
-          100: "#dde9ff",
-          500: "#3b82f6",
-          600: "#2563eb",
-          700: "#1d4ed8",
+          50:  v("--color-brand-50"),
+          100: v("--color-brand-100"),
+          400: v("--color-brand-400"),
+          500: v("--color-brand-500"),
+          600: v("--color-brand-600"),
+          700: v("--color-brand-700"),
+          900: v("--color-brand-900"),
         },
         surface: {
           DEFAULT: "#ffffff",

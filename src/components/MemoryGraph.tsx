@@ -1,12 +1,16 @@
+import { useT } from "../lib/i18n";
+
 interface Props {
   history: number[]; // 메모리 % 배열 (최신이 마지막)
 }
 
 export function MemoryGraph({ history }: Props) {
+  const t = useT();
+
   if (history.length < 2) {
     return (
       <div className="h-12 flex items-center justify-center text-xs text-slate-400">
-        데이터 수집 중…
+        {t("graph.collecting")}
       </div>
     );
   }
@@ -56,8 +60,8 @@ export function MemoryGraph({ history }: Props) {
         />
       </svg>
       <div className="absolute top-0 right-0 flex gap-3 text-xs font-mono text-slate-400">
-        <span>최소 {Math.min(...history).toFixed(0)}%</span>
-        <span>최대 {Math.max(...history).toFixed(0)}%</span>
+        <span>{t("graph.min")} {Math.min(...history).toFixed(0)}%</span>
+        <span>{t("graph.max")} {Math.max(...history).toFixed(0)}%</span>
       </div>
     </div>
   );

@@ -91,7 +91,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 const CPU_HISTORY_MAX = 15;
 
 // ── 내부 앱 컴포넌트 (i18n context 안에서 실행) ───────────────────────────
-function AppInner() {
+function AppInner({ onLocaleChange }: { onLocaleChange: (locale: Locale) => void }) {
   const t = useT();
 
   // ── 토스트 시스템 ──────────────────────────────────────────────────────
@@ -186,6 +186,12 @@ function AppInner() {
   const handleSaveSettings = async (newSettings: AppSettings) => {
     await api.saveSettings(newSettings);
     setSettings(newSettings);
+    // 언어가 변경됐을 경우 I18nProvider에 즉시 반영 (전체 UI 재번역)
+    const lang = newSettings.language as Locale;
+    if (lang === "ko" || lang === "en" || lang === "ja") {
+      onLocaleChange(lang);
+      localStorage.setItem("memtool-language", lang);
+    }
     // 보호 목록 등이 바뀌었으므로 프로세스 목록 갱신
     refreshProcesses(threshold);
   };
@@ -335,7 +341,7 @@ function AppInner() {
       setAutoCleanToast(true);
       setTimeout(() => setAutoCleanToast(false), 3000);
       refreshProcesses(threshold);
-      addNotif("auto_clean", t("notifications.autoCleanTitle"), `${e.payload}개 프로세스 종료`);
+      addNotif("auto_clean", t("notifications.autoCleanTitle"), t("toast.autoCleanResult", e.payload));
     }).then(fn => { unl1 = fn; }).catch(console.error);
 
     listen<number>("memory-warning", (e) => {
@@ -461,7 +467,7 @@ function AppInner() {
   const handleProtect = useCallback(async (name: string) => {
     const lname = name.toLowerCase();
     if (settings.protected_processes.includes(lname)) {
-      toast.info(`${name}`, "이미 보호 목록에 있습니다");
+      toast.info(`${name}`, t("toast.alreadyProtected"));
       return;
     }
     const newSettings: AppSettings = {
@@ -472,9 +478,9 @@ function AppInner() {
       await api.saveSettings(newSettings);
       setSettings(newSettings);
       await refreshProcesses(threshold);
-      toast.success(`${name}`, "보호 목록에 추가됨");
+      toast.success(`${name}`, t("toast.addedProtected"));
     } catch (e) {
-      toast.error(String(e), "보호 목록 추가 실패");
+      toast.error(String(e), t("toast.addProtectedFail"));
     }
   }, [settings, threshold, refreshProcesses]);
 
@@ -501,7 +507,7 @@ function AppInner() {
       setSelected(new Set());
       await refreshProcesses(threshold);
     } catch (e) {
-      toast.error(String(e), "프로세스 종료 오류");
+      toast.error(String(e), t("toast.killError"));
     } finally {
       setKilling(false);
     }
@@ -513,10 +519,10 @@ function AppInner() {
     try {
       const pids = Array.from(selected);
       const result = await api.emptyWorkingSet(pids);
-      toast.success(`${result.processed}개 성공, ${result.failed}개 실패`, "메모리 압축 완료");
+      toast.success(t("toast.compressResult", result.processed, result.failed), t("toast.compressDone"));
       await refreshProcesses(threshold);
     } catch (e) {
-      toast.error(String(e), "메모리 압축 오류");
+      toast.error(String(e), t("toast.compressError"));
     } finally {
       setEmptyingSet(false);
     }
@@ -528,11 +534,11 @@ function AppInner() {
     setFlushing(true);
     try {
       const r = await api.flushAllWorkingSets();
-      toast.success(`${r.processed}개 프로세스 압축 완료`, t("footer.flushAll"));
-      addNotif("info" as NotifType, t("footer.flushAll"), `${r.processed}개 압축 완료`);
+      toast.success(t("toast.flushResult", r.processed), t("footer.flushAll"));
+      addNotif("info" as NotifType, t("footer.flushAll"), t("toast.flushNotifBody", r.processed));
       await refreshProcesses(threshold);
     } catch (e) {
-      toast.error(String(e), "RAM 플러시 오류");
+      toast.error(String(e), t("toast.flushError"));
     } finally {
       setFlushing(false);
     }
@@ -542,7 +548,7 @@ function AppInner() {
   const doQuickClean = async () => {
     const pids = processes.filter(p => p.safe_kill).map(p => p.pid);
     if (pids.length === 0) {
-      toast.info("임계값을 낮추거나 잠시 후 다시 시도하세요.", "추천 프로세스 없음");
+      toast.info(t("toast.noRecommendedHint"), t("toast.noRecommended"));
       return;
     }
     setQuickCleaning(true);
@@ -552,7 +558,7 @@ function AppInner() {
       setSelected(new Set());
       await refreshProcesses(threshold);
     } catch (e) {
-      toast.error(String(e), "Quick Clean 오류");
+      toast.error(String(e), t("toast.quickCleanError"));
     } finally {
       setQuickCleaning(false);
     }
@@ -612,7 +618,7 @@ function AppInner() {
             <div className="text-5xl font-bold tabular-nums leading-none text-brand-600 dark:text-brand-400">
               {snap ? snap.percent.toFixed(0) : "—"}<span className="text-2xl font-normal text-slate-400">%</span>
             </div>
-            <div className="text-[11px] text-slate-400 mt-1.5">RAM 사용률</div>
+            <div className="text-[11px] text-slate-400 mt-1.5">{t("process.ramUsage")}</div>
           </div>
           {sysStats && (
             <div className="text-[11px] font-mono text-slate-400 mt-0.5">
@@ -819,10 +825,10 @@ function AppInner() {
                   <Square className="w-3.5 h-3.5" /> {t("toolbar.deselect")}
                 </button>
                 <div className="ml-auto text-xs text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1.5">
-                  {stats.total}개 · 추천 {stats.recommended}개 · 보호 {stats.protected}개
+                  {t("process.statsBar", stats.total, stats.recommended, stats.protected)}
                   {loadMs !== null && <span className="opacity-70">· {loadMs.toFixed(0)}ms</span>}
                   <span className="opacity-50">·</span>
-                  <span title="다음 자동 새로고침까지 남은 시간" className="opacity-60">
+                  <span title={t("process.nextRefresh")} className="opacity-60">
                     🔄 {nextRefreshIn < 60 ? `${nextRefreshIn}s` : `${Math.floor(nextRefreshIn / 60)}:${String(nextRefreshIn % 60).padStart(2, "0")}`}
                   </span>
                 </div>
@@ -831,20 +837,20 @@ function AppInner() {
               {/* 선택 정보 */}
               <div className="flex items-center justify-between rounded-lg bg-gradient-to-r from-brand-50 to-slate-50 dark:from-brand-600/10 dark:to-slate-700/30 px-4 py-2.5">
                 <div className="flex items-baseline gap-3 text-sm">
-                  <span className="text-slate-600 dark:text-slate-300">선택</span>
+                  <span className="text-slate-600 dark:text-slate-300">{t("process.selected")}</span>
                   <span className="text-xl font-bold text-brand-700 dark:text-brand-400 tabular-nums">{stats.selectedCount}</span>
-                  <span className="text-slate-500 dark:text-slate-400">개</span>
+                  <span className="text-slate-500 dark:text-slate-400">{t("process.countUnit")}</span>
                   <span className="text-slate-300 dark:text-slate-600">·</span>
-                  <span className="text-slate-600 dark:text-slate-300">예상 확보</span>
+                  <span className="text-slate-600 dark:text-slate-300">{t("process.estimatedFree")}</span>
                   <span className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 tabular-nums">
                     {stats.estimatedMb < 1024 ? `${stats.estimatedMb.toFixed(0)} MB` : `${(stats.estimatedMb / 1024).toFixed(2)} GB`}
                   </span>
                 </div>
                 <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-                  <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-sys" />시스템</span>
-                  <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" />보호됨</span>
-                  <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400" />추천</span>
-                  <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-400" />일반</span>
+                  <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-sys" />{t("process.typeSystem")}</span>
+                  <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" />{t("process.typeProtected")}</span>
+                  <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400" />{t("process.typeRecommended")}</span>
+                  <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-400" />{t("process.typeNormal")}</span>
                 </div>
               </div>
             </div>
@@ -904,7 +910,7 @@ function AppInner() {
             <button
               onClick={doFlushAll}
               disabled={flushing || killing}
-              title="전체 비시스템 프로세스의 WorkingSet 압축 — 프로세스를 종료하지 않고 RAM 확보"
+              title={t("footer.flushAll")}
               className="btn btn-secondary px-4 py-2 text-sm"
             >
               {flushing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
@@ -970,7 +976,7 @@ function AppInner() {
       {trayHint && (
         <div className="fixed bottom-4 left-4 z-50 px-4 py-3 bg-slate-800 text-white text-sm rounded-xl shadow-lg animate-fade-in flex items-center gap-2.5 max-w-xs">
           <Zap className="w-4 h-4 text-brand-400 flex-shrink-0" />
-          <span>창을 닫아도 트레이에서 계속 실행됩니다.</span>
+          <span>{t("tray.runningHint")}</span>
         </div>
       )}
 
@@ -1047,7 +1053,7 @@ export default function App() {
 
   return (
     <I18nProvider value={locale}>
-      <AppInner />
+      <AppInner onLocaleChange={setLocale} />
     </I18nProvider>
   );
 }
